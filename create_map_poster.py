@@ -213,7 +213,7 @@ def get_coordinates(city, country):
     else:
         raise ValueError(f"Could not find coordinates for {city}, {country}")
 
-def create_poster(city, country, point, dist, output_file):
+def create_poster(city, country, point, dist, output_file, focus_point=None):
     print(f"\nGenerating map for {city}, {country}...")
     
     # Progress bar for data fetching
@@ -228,6 +228,8 @@ def create_poster(city, country, point, dist, output_file):
         pbar.set_description("Downloading water features")
         try:
             water = ox.features_from_point(point, tags={'natural': 'water', 'waterway': 'riverbank'}, dist=dist)
+            if water is not None and not water.empty:
+                water = water[water.geometry.type.isin(['Polygon', 'MultiPolygon'])]
         except:
             water = None
         pbar.update(1)
@@ -237,6 +239,8 @@ def create_poster(city, country, point, dist, output_file):
         pbar.set_description("Downloading parks/green spaces")
         try:
             parks = ox.features_from_point(point, tags={'leisure': 'park', 'landuse': 'grass'}, dist=dist)
+            if parks is not None and not parks.empty:
+                parks = parks[parks.geometry.type.isin(['Polygon', 'MultiPolygon'])]
         except:
             parks = None
         pbar.update(1)
@@ -268,6 +272,12 @@ def create_poster(city, country, point, dist, output_file):
         edge_linewidth=edge_widths,
         show=False, close=False
     )
+    
+    # Layer 2.5: Fokus-Punkt (falls gesetzt)
+    if focus_point is not None:
+        print("Platziere Fokus-Punkt auf der Karte...")
+        focus_color = THEME.get('focus_color', '#E63946')
+        ax.scatter(focus_point[1], focus_point[0], color=focus_color, s=350, zorder=9, edgecolor='white', linewidth=2.5)
     
     # Layer 3: Gradients (Top and Bottom)
     create_gradient_fade(ax, THEME['gradient_color'], location='bottom', zorder=10)
@@ -403,6 +413,185 @@ def list_themes():
             print(f"    {description}")
         print()
 
+def run_interactive_wizard():
+    """
+    Runs an interactive CLI wizard to gather parameters and generate a poster.
+    """
+    print("\n" + "=" * 60)
+    print("⚓️  Moin Moin! Willkommen beim City Map Poster Generator Wizard!  ⚓️")
+    print("=" * 60)
+    print("Lass uns zusammen ein fettes Map-Poster basteln. Trag einfach die Infos ein.\n")
+    
+    # 1. City
+    while True:
+        city = input("👉 Welche Stadt soll aufs Poster? (z.B. Hamburg, Tokyo, New York): ").strip()
+        if city:
+            break
+        print("⚠ Ohne Stadt läuft hier gar nix, Diggi! Trag bitte einen Namen ein.")
+        
+    # 2. Country
+    while True:
+        country = input(f"👉 In welchem Land liegt {city}? (z.B. Germany, Japan, USA): ").strip()
+        if country:
+            break
+        print("⚠ Das Land brauche ich für die präzise Suche, trag das bitte noch ein.")
+        
+    # 3. Theme
+    available_themes = get_available_themes()
+    print("\n👉 Welches Farbschema (Theme) hättest du gerne?")
+    if available_themes:
+        for idx, theme_name in enumerate(available_themes, 1):
+            theme_path = os.path.join(THEMES_DIR, f"{theme_name}.json")
+            display_name = theme_name
+            try:
+                with open(theme_path, 'r') as f:
+                    theme_data = json.load(f)
+                    display_name = theme_data.get('name', theme_name)
+            except:
+                pass
+            print(f"  [{idx}] {theme_name} ({display_name})")
+        
+        default_theme_idx = 1
+        if "feature_based" in available_themes:
+            default_theme_idx = available_themes.index("feature_based") + 1
+        elif "noir" in available_themes:
+            default_theme_idx = available_themes.index("noir") + 1
+            
+        default_theme = available_themes[default_theme_idx - 1]
+        
+        while True:
+            choice = input(f"Wähle eine Nummer [1-{len(available_themes)}] (Standard: {default_theme_idx} -> {default_theme}): ").strip()
+            if not choice:
+                theme = default_theme
+                break
+            try:
+                choice_idx = int(choice)
+                if 1 <= choice_idx <= len(available_themes):
+                    theme = available_themes[choice_idx - 1]
+                    break
+            except ValueError:
+                pass
+            
+            # Allow typing the theme name directly
+            if choice in available_themes:
+                theme = choice
+                break
+                
+            print(f"⚠ Ungültige Auswahl. Bitte wähle eine Zahl zwischen 1 und {len(available_themes)} oder gib den Namen direkt ein.")
+    else:
+        print("  (Keine Themes im Ordner gefunden. Benutze Standard 'feature_based')")
+        theme = "feature_based"
+
+    # 4. Distance
+    print("\n👉 Welchen Bildausschnitt (Radius in Metern) möchtest du zeigen?")
+    print("  [1] Fokus auf die Innenstadt / Enger Ausschnitt (ca. 5.000m)")
+    print("  [2] Fokus auf die Stadt / Mittlerer Ausschnitt (ca. 10.000m) -- Empfohlen!")
+    print("  [3] Die ganze Metropole / Großer Ausschnitt (ca. 20.000m)")
+    print("  [4] Custom / Selber in Metern eingeben")
+    
+    while True:
+        dist_choice = input("Wähle eine Option [1-4] (Standard: 2 -> 10000m): ").strip()
+        if not dist_choice:
+            distance = 10000
+            break
+        if dist_choice == '1':
+            distance = 5000
+            break
+        elif dist_choice == '2':
+            distance = 10000
+            break
+        elif dist_choice == '3':
+            distance = 20000
+            break
+        elif dist_choice == '4':
+            while True:
+                custom_dist = input("Gib den Radius in Metern ein (z.B. 12000): ").strip()
+                try:
+                    distance = int(custom_dist)
+                    if distance > 0:
+                        break
+                    print("⚠ Der Radius muss größer als 0 sein.")
+                except ValueError:
+                    print("⚠ Bitte gib eine gültige Zahl ein.")
+            break
+        else:
+            print("⚠ Ungültige Auswahl. Bitte wähle eine Option von 1 bis 4.")
+            
+    # 5. Focus point
+    print("\n👉 Möchtest du einen roten Fokus-Punkt (Marker) auf dem Poster platzieren?")
+    print("  [1] Kein Fokus-Punkt (Standard)")
+    print("  [2] Fokus-Punkt auf die Stadtmitte setzen")
+    print("  [3] Eigene Koordinaten eingeben")
+    
+    focus_mode = '1'
+    focus_coords = None
+    
+    while True:
+        focus_choice = input("Wähle eine Option [1-3] (Standard: 1 -> Kein Fokus-Punkt): ").strip()
+        if not focus_choice:
+            focus_mode = '1'
+            break
+        if focus_choice in ['1', '2']:
+            focus_mode = focus_choice
+            break
+        elif focus_choice == '3':
+            focus_mode = '3'
+            while True:
+                custom_focus = input("Gib die Koordinaten ein (Format: latitude,longitude - z.B. 53.5458,9.9666): ").strip()
+                try:
+                    lat_str, lon_str = custom_focus.split(',')
+                    focus_coords = (float(lat_str.strip()), float(lon_str.strip()))
+                    break
+                except ValueError:
+                    print("⚠ Ungültiges Format. Bitte 'latitude,longitude' eingeben (z.B. 53.5458,9.9666).")
+            break
+        else:
+            print("⚠ Ungültige Auswahl. Bitte wähle eine Option von 1 bis 3.")
+            
+    print("\n" + "=" * 50)
+    print("Alles klar, Diggi! Hier ist dein Fahrplan:")
+    print(f"  📍 Stadt:    {city}, {country}")
+    print(f"  🎨 Farbschema: {theme}")
+    print(f"  📐 Radius:   {distance} Meter")
+    if focus_mode == '1':
+        print("  🔴 Fokus-Punkt: Keiner")
+    elif focus_mode == '2':
+        print("  🔴 Fokus-Punkt: Stadtmitte")
+    elif focus_mode == '3':
+        print(f"  🔴 Fokus-Punkt: {focus_coords[0]:.4f}, {focus_coords[1]:.4f}")
+    print("=" * 50 + "\n")
+    
+    confirm = input("Sollen wir das Poster so generieren? [Y/n]: ").strip().lower()
+    if confirm in ['', 'y', 'yes', 'ja']:
+        # Load theme
+        global THEME
+        THEME = load_theme(theme)
+        
+        try:
+            coords = get_coordinates(city, country)
+            
+            # Resolve actual focus coordinates
+            actual_focus_coords = None
+            if focus_mode == '2':
+                actual_focus_coords = coords
+            elif focus_mode == '3':
+                actual_focus_coords = focus_coords
+                
+            output_file = generate_output_filename(city, theme)
+            create_poster(city, country, coords, distance, output_file, focus_point=actual_focus_coords)
+            
+            print("\n" + "=" * 50)
+            print("✓ Poster-Generierung erfolgreich abgeschlossen!")
+            print(f"Dein Kunstwerk liegt bereit unter: {output_file}")
+            print("=" * 50)
+            
+        except Exception as e:
+            print(f"\n✗ Fehler bei der Generierung: {e}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print("Generierung abgebrochen. Tschüss, Diggi!")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Generate beautiful map posters for any city",
@@ -413,6 +602,7 @@ Examples:
   python create_map_poster.py --city Tokyo --country Japan --theme midnight_blue
   python create_map_poster.py --city Paris --country France --theme noir --distance 15000
   python create_map_poster.py --list-themes
+  python create_map_poster.py --wizard
         """
     )
     
@@ -420,13 +610,15 @@ Examples:
     parser.add_argument('--country', '-C', type=str, help='Country name')
     parser.add_argument('--theme', '-t', type=str, default='feature_based', help='Theme name (default: feature_based)')
     parser.add_argument('--distance', '-d', type=int, default=29000, help='Map radius in meters (default: 29000)')
+    parser.add_argument('--focus', '-f', type=str, help='Focus point coordinates (latitude,longitude) to plot a red marker')
     parser.add_argument('--list-themes', action='store_true', help='List all available themes')
+    parser.add_argument('--wizard', '-w', action='store_true', help='Start interactive wizard')
     
     args = parser.parse_args()
     
-    # If no arguments provided, show examples
-    if len(os.sys.argv) == 1:
-        print_examples()
+    # If no arguments provided or --wizard flag is used, run the wizard
+    if len(os.sys.argv) == 1 or args.wizard:
+        run_interactive_wizard()
         os.sys.exit(0)
     
     # List themes if requested
@@ -436,7 +628,8 @@ Examples:
     
     # Validate required arguments
     if not args.city or not args.country:
-        print("Error: --city and --country are required.\n")
+        print("Error: --city and --country are required for CLI mode.\n")
+        print("💡 Tipp: Starte das Skript einfach ohne Argumente oder mit -w, um den interaktiven Wizard zu starten!\n")
         print_examples()
         os.sys.exit(1)
     
@@ -454,11 +647,22 @@ Examples:
     # Load theme
     THEME = load_theme(args.theme)
     
+    # Parse focus point if provided in CLI
+    focus_coords = None
+    if args.focus:
+        try:
+            lat_str, lon_str = args.focus.split(',')
+            focus_coords = (float(lat_str.strip()), float(lon_str.strip()))
+            print(f"✓ Fokus-Punkt Koordinaten geladen: {focus_coords}")
+        except Exception as e:
+            print(f"Error: Ungültiges Format für --focus. Muss 'latitude,longitude' sein (z.B. '53.5511,9.9937').")
+            os.sys.exit(1)
+            
     # Get coordinates and generate poster
     try:
         coords = get_coordinates(args.city, args.country)
         output_file = generate_output_filename(args.city, args.theme)
-        create_poster(args.city, args.country, coords, args.distance, output_file)
+        create_poster(args.city, args.country, coords, args.distance, output_file, focus_point=focus_coords)
         
         print("\n" + "=" * 50)
         print("✓ Poster generation complete!")

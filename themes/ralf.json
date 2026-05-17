@@ -1,0 +1,16 @@
+{
+  "name": "Ralf",
+  "description": "Minimalistische Ästhetik mit warmem Elfenbein, weichen Anthrazit-Straßen und dezentem Schieferblau für Gewässer.",
+  "bg": "#FAF8F5",
+  "text": "#211F1D",
+  "gradient_color": "#FAF8F5",
+  "water": "#AEC1CC",
+  "parks": "#F4F1EA",
+  "road_motorway": "#3E3B38",
+  "road_primary": "#4E4B47",
+  "road_secondary": "#6E6A66",
+  "road_tertiary": "#8E8A85",
+  "road_residential": "#B2AEA9",
+  "road_default": "#8E8A85",
+  "focus_color": "#B43B3B"
+}
