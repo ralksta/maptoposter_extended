@@ -268,7 +268,12 @@ def create_poster(city, country, point, dist, output_file, focus_point=None):
         # 2. Fetch Water Features
         pbar.set_description("Downloading water features")
         try:
-            water = ox.features_from_point(point, tags={'natural': 'water', 'waterway': 'riverbank'}, dist=dist)
+            water_tags = {
+                'natural': ['water', 'bay', 'strait'],
+                'waterway': ['riverbank', 'dock', 'canal'],
+                'place': ['sea', 'ocean']
+            }
+            water = ox.features_from_point(point, tags=water_tags, dist=dist)
             if water is not None and not water.empty:
                 water = water[water.geometry.type.isin(['Polygon', 'MultiPolygon'])]
         except:
