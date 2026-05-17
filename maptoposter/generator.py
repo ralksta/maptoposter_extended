@@ -290,7 +290,20 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
     font_body_val = theme.get('font_body')
     font_mono_val = theme.get('font_mono')
     
-    font_main = get_font_prop(font_title_val, 'sans-serif', weight='bold', size=int(60 * scale))
+    # Calculate dynamic font size and letter spacing for bottom title to avoid truncation
+    city_upper = city.upper()
+    city_len = len(city_upper)
+    if city_len <= 8:
+        spaced_city = "  ".join(list(city_upper))
+        title_size = int(60 * scale)
+    elif 8 < city_len <= 12:
+        spaced_city = " ".join(list(city_upper))
+        title_size = int(60 * (9.0 / city_len) * scale)
+    else:
+        spaced_city = " ".join(list(city_upper))
+        title_size = int(max(30, 60 * (10.0 / city_len)) * scale)
+
+    font_main = get_font_prop(font_title_val, 'sans-serif', weight='bold', size=title_size)
     font_top = get_font_prop(font_title_val, 'sans-serif', weight='bold', size=int(40 * scale))
     font_sub = get_font_prop(font_body_val, 'sans-serif', 
                             weight='light' if font_body_val in ['Futura', 'Avenir', 'Helvetica Neue'] else 'normal', 
@@ -308,8 +321,6 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
     
     # Render Bottom text on Map only if not hidden
     if not should_hide_card_title:
-        spaced_city = "  ".join(list(city.upper()))
-
         # --- BOTTOM TEXT ---
         ax.text(0.5, 0.14, spaced_city, transform=ax.transAxes,
                 color=theme['text'], ha='center', fontproperties=font_main, zorder=11)
