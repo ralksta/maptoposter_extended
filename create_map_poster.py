@@ -254,7 +254,7 @@ def get_country_from_address(location):
     return address.get('country', "")
 
 
-def create_poster(city, country, point, dist, output_file, focus_point=None):
+def create_poster(city, country, point, dist, output_file, focus_point=None, show_inset=False, inset_position='top-left'):
     print(f"\nGenerating map for {city}, {country}...")
     
     # Progress bar for data fetching
@@ -382,6 +382,57 @@ def create_poster(city, country, point, dist, output_file, focus_point=None):
     ax.text(0.98, 0.02, "© OpenStreetMap contributors", transform=ax.transAxes,
             color=THEME['text'], alpha=0.5, ha='right', va='bottom', 
             fontproperties=font_attr, zorder=11)
+
+    # Layer 4: Optionale Landeskarte (Inset-Map)
+    if show_inset:
+        print(f"Versuche Landeskarte (Inset) für {country} zu laden...")
+        try:
+            # 1. Geometrie des Landes laden
+            gdf_country = ox.geocode_to_gdf(country)
+            if gdf_country is not None and not gdf_country.empty:
+                # 2. Position des Insets bestimmen basierend auf inset_position
+                # Das Poster hat das Verhältnis 12:16 (W:H) -> height = width * 12 / 16 = width * 0.75
+                width = 0.16
+                height = width * 0.75  # 0.12
+                
+                if inset_position == 'top-left':
+                    left, bottom = 0.05, 0.83
+                elif inset_position == 'top-right':
+                    left, bottom = 0.79, 0.83
+                elif inset_position == 'bottom-left':
+                    left, bottom = 0.05, 0.22
+                elif inset_position == 'bottom-right':
+                    left, bottom = 0.79, 0.22
+                else:
+                    left, bottom = 0.05, 0.83  # Fallback
+                
+                # 3. Neue Achse hinzufügen
+                inset_ax = fig.add_axes([left, bottom, width, height], facecolor=THEME['water'])
+                
+                # 4. Land plotten
+                # Umrissfarbe: THEME['text'], Füllung: THEME.get('parks') oder THEME['bg']
+                land_color = THEME.get('parks', THEME['bg'])
+                border_color = THEME['text']
+                gdf_country.plot(ax=inset_ax, facecolor=land_color, edgecolor=border_color, linewidth=0.5)
+                
+                # 5. Fokuspunkt/Kartenzentrum als roten Punkt einzeichnen
+                lat, lon = point
+                focus_color = THEME.get('focus_color', '#B43B3B')
+                inset_ax.scatter(lon, lat, color=focus_color, s=40, zorder=5, edgecolor='white', linewidth=1)
+                
+                # 6. Achsen & Spines designen
+                inset_ax.set_xticks([])
+                inset_ax.set_yticks([])
+                
+                # Edler dünner Rahmen in Textfarbe
+                for spine in inset_ax.spines.values():
+                    spine.set_color(THEME['text'])
+                    spine.set_linewidth(0.8)
+                    spine.set_alpha(0.8)
+                    
+                print("✓ Landeskarte (Inset) erfolgreich hinzugefügt!")
+        except Exception as e:
+            print(f"⚠ Warning: Landeskarte für {country} konnte nicht gerendert werden: {e}")
 
     # 5. Save
     print(f"Saving to {output_file}...")
@@ -663,6 +714,51 @@ def run_interactive_wizard():
         else:
             print("⚠ Ungültige Auswahl. Bitte wähle eine Option von 1 bis 4.")
             
+    # 6. Landeskarte (Inset-Map) abfragen
+    show_inset = False
+    inset_position = 'top-left'
+    
+    print("\n👉 Möchtest du eine kleine Übersichtskarte des Landes (Inset-Map) in einer Ecke anzeigen?")
+    print("  [1] Nein (Standard)")
+    print("  [2] Ja, Übersichtskarte anzeigen")
+    
+    while True:
+        choice = input("Wähle eine Option [1-2] (Standard: 1): ").strip()
+        if not choice or choice == '1':
+            show_inset = False
+            print("✓ Keine Übersichtskarte auf dem Poster.\n")
+            break
+        if choice == '2':
+            show_inset = True
+            print("✓ Übersichtskarte wird auf dem Poster eingezeichnet!\n")
+            
+            print("👉 In welcher Ecke soll die Übersichtskarte platziert werden?")
+            print("  [1] Oben Links (Standard)")
+            print("  [2] Oben Rechts")
+            print("  [3] Unten Links (Über dem Text)")
+            print("  [4] Unten Rechts (Über dem Text)")
+            
+            while True:
+                pos_choice = input("Wähle eine Option [1-4] (Standard: 1): ").strip()
+                if not pos_choice or pos_choice == '1':
+                    inset_position = 'top-left'
+                    break
+                elif pos_choice == '2':
+                    inset_position = 'top-right'
+                    break
+                elif pos_choice == '3':
+                    inset_position = 'bottom-left'
+                    break
+                elif pos_choice == '4':
+                    inset_position = 'bottom-right'
+                    break
+                else:
+                    print("⚠ Ungültige Auswahl. Bitte wähle eine Option von 1 bis 4.")
+            
+            print(f"✓ Position für Übersichtskarte festgelegt auf: {inset_position}\n")
+            break
+        print("⚠ Ungültige Auswahl. Bitte wähle 1 oder 2.")
+
     print("\n" + "=" * 50)
     print("Alles klar, Diggi! Hier ist dein Fahrplan:")
     print(f"  📍 Haupttitel: {city}")
@@ -673,6 +769,10 @@ def run_interactive_wizard():
         print("  🔴 Fokus-Punkt: Keiner (nackte Karte zentriert)")
     else:
         print(f"  🔴 Fokus-Punkt: {actual_focus_coords[0]:.4f}, {actual_focus_coords[1]:.4f} (Mit Marker und zentriert)")
+    if show_inset:
+        print(f"  🗺 Landeskarte: Ja (Position: {inset_position})")
+    else:
+        print("  🗺 Landeskarte: Nein")
     print("=" * 50 + "\n")
     
     confirm = input("Sollen wir das Poster so generieren? [Y/n]: ").strip().lower()
@@ -683,7 +783,7 @@ def run_interactive_wizard():
         
         try:
             output_file = generate_output_filename(city, theme)
-            create_poster(city, country, coords, distance, output_file, focus_point=actual_focus_coords)
+            create_poster(city, country, coords, distance, output_file, focus_point=actual_focus_coords, show_inset=show_inset, inset_position=inset_position)
             
             print("\n" + "=" * 50)
             print("✓ Poster-Generierung erfolgreich abgeschlossen!")
@@ -720,6 +820,8 @@ Examples:
     parser.add_argument('--list-themes', action='store_true', help='List all available themes')
     parser.add_argument('--wizard', '-w', action='store_true', help='Start interactive wizard')
     parser.add_argument('--select-first', '-y', action='store_true', help='Force using the first match if city name is ambiguous')
+    parser.add_argument('--show-inset', '-i', action='store_true', help='Show country locator/inset map in one of the corners')
+    parser.add_argument('--inset-position', '-ip', type=str, default='top-left', choices=['top-left', 'top-right', 'bottom-left', 'bottom-right'], help='Position of the country inset map (default: top-left)')
     
     args = parser.parse_args()
     
@@ -803,7 +905,7 @@ Examples:
         else:
             center_coords = coords
             
-        create_poster(args.city, args.country, center_coords, args.distance, output_file, focus_point=focus_coords)
+        create_poster(args.city, args.country, center_coords, args.distance, output_file, focus_point=focus_coords, show_inset=args.show_inset, inset_position=args.inset_position)
         
         print("\n" + "=" * 50)
         print("✓ Poster generation complete!")
