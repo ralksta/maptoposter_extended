@@ -24,6 +24,13 @@ An elegant 16:10 landscape format with a beautifully rendered data column on the
   <img src="assets/hamburg_landscape.png" width="800" alt="Hamburg Landscape Plaque (Waterkant Theme - Clean)">
 </p>
 
+### 3. Country Locator Inset (`--show-inset` / `-i`)
+For a museum-grade cartographic finish, you can display an elegant country locator inset map in any corner (`top-left`, `top-right`, `bottom-left`, `bottom-right`). It renders a minimal, matching outline of the country with a distinctive focal marker pointing exactly to the city's coordinates.
+
+<p align="center">
+  <img src="assets/hamburg_locator.png" width="500" alt="Hamburg Portrait with Country Locator Inset (Waterkant Theme)">
+</p>
+
 ---
 
 ## ✨ Features
