@@ -3,8 +3,8 @@
 Generate breath-taking, gallery-grade minimalist map posters for any city or landmark in the world, complete with dynamic road hierarchies, overview insets, weather integration, and authentic texture overlays.
 
 <p align="center">
-  <img src="posters/hamburg_warm_beige_20260517_213722.png" width="380" alt="Hamburg Portrait">
-  <img src="posters/elbphilharmonie_noir_20260517_213805.png" width="380" alt="Elbphilharmonie Portrait with Washi Texture">
+  <img src="assets/hamburg_warm_beige.png" width="380" alt="Hamburg Portrait">
+  <img src="assets/elbphilharmonie_noir.png" width="380" alt="Elbphilharmonie Portrait with Washi Texture">
 </p>
 
 ---
@@ -13,7 +13,7 @@ Generate breath-taking, gallery-grade minimalist map posters for any city or lan
 
 - **🗺️ Complete Modular Engine**: Completely rewritten as a structured, clean, and highly maintainable Python package (`maptoposter/`).
 - **🧙‍♂️ Interactive Setup Wizard**: An intelligent CLI wizard that guides you through geocoding, theme selection, size guides, custom layouts, and saves your setup for future automated runs.
-- **🎨 21 Curated Premium Themes**: A gorgeous selection of styles from the historic `warm_beige` and minimalist `noir` to the custom-tailored `waterkant` and `leica` styles.
+- **🎨 20+ Curated Premium Themes**: A gorgeous selection of styles from the historic `warm_beige` and minimalist `noir` to the custom-tailored `waterkant` and `japanese_ink` styles.
 - **📐 Dual Aspect Ratio Layouts**: 
   - `portrait`: Classic high-end wall poster format.
   - `landscape-plaque` / `gallery-plaque`: Gallery-style landscape plaque layout with a detailed metadata column on the right showing coordinates, weather, camera details, and region.
@@ -72,7 +72,7 @@ python create_map_poster.py --city <city> --country <country> [options]
 | `--layout` | `-l` | Poster layout format | `portrait` \| `landscape-plaque` |
 | `--no-card-title` | | Explicitly hide the title card directly on the map | `Flag` |
 | `--show-card-title` | | Explicitly show the title card directly on the map | `Flag` |
-| `--custom-note` | | Custom note / camera specifications for plaque layouts | `Leica M11, 35mm Summilux` |
+| `--custom-note` | | Custom note / camera specifications for plaque layouts | `Maritime Archive Edition, 50mm Lens` |
 | `--paper-texture` | | Apply the authentic Japanese Washi paper texture overlay | `Flag` |
 | `--config` | | Path to a pre-defined JSON config file for headless wizard runs | `configs/my_setup.json` |
 | `--select-first` | `-y` | Force using the first match if city name is ambiguous | `Flag` |
@@ -83,7 +83,7 @@ python create_map_poster.py --city <city> --country <country> [options]
 
 ### 🎨 Curated Themes
 
-Choose from 21 gorgeous, tailor-made color palettes:
+Choose from 20+ gorgeous, tailor-made color palettes:
 
 - `feature_based`: Classic black & white with distinct road hierarchy.
 - `gradient_roads`: Smooth, sleek gradient shading.
@@ -103,7 +103,6 @@ Choose from 21 gorgeous, tailor-made color palettes:
 - `copper_patina`: Oxidized copper and patina green.
 - `monochrome_blue`: Monochromatic ocean blue family.
 - `waterkant`: True maritime Waterkant design, deep sea blue and bright whites.
-- `leica`: Dedicated photography layout with high-contrast monochrome values.
 - `ralf` / `ralf2`: Premium personal layouts with tailor-made contrasts.
 
 ---
