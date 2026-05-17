@@ -585,7 +585,7 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
     if show_inset:
         print(f"Attempting to load inset map for {country}...")
         try:
-            # 1. Geometrie des Landes laden
+            # 1. Load country geometry
             gdf_country = ox.geocode_to_gdf(country)
             if gdf_country is not None and not gdf_country.empty:
                 minx, miny, maxx, maxy = gdf_country.total_bounds
@@ -593,7 +593,7 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
                 data_h = maxy - miny
                 aspect = data_h / data_w if data_w > 0 else 1.0
 
-                # 2. Position des Insets bestimmen basierend auf inset_position und layout
+                # 2. Determine inset position based on inset_position and layout
                 if layout in ['landscape-plaque', 'gallery-plaque']:
                     fig_w = 15 if layout == 'gallery-plaque' else 16
                     width = 0.11

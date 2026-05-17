@@ -2,8 +2,8 @@
 """
 ⚓️ MapPoster - Beautiful City Map Poster Generator.
 
-Moin Moin, Diggi! Dieser Kutter ist jetzt elegant und modularisiert.
-Der eigentliche Maschinenraum liegt unter `maptoposter/`.
+Ahoy, Skipper! This vessel is now elegant and modularized.
+The actual engine room is located under `maptoposter/`.
 """
 
 from maptoposter.cli import parse_args_and_run
