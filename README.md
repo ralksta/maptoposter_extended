@@ -1,32 +1,54 @@
-# City Map Poster Generator
+# ⚓️ Premium City Map Poster Generator
 
-Generate beautiful, minimalist map posters for any city in the world.
+Generate breath-taking, gallery-grade minimalist map posters for any city or landmark in the world, complete with dynamic road hierarchies, overview insets, weather integration, and authentic texture overlays.
 
-<img src="posters/singapore_neon_cyberpunk_20260108_184503.png" width="250">
-<img src="posters/dubai_midnight_blue_20260108_174920.png" width="250">
+<p align="center">
+  <img src="posters/hamburg_warm_beige_20260517_213722.png" width="380" alt="Hamburg Portrait">
+  <img src="posters/elbphilharmonie_noir_20260517_213805.png" width="380" alt="Elbphilharmonie Portrait with Washi Texture">
+</p>
 
-## Examples
+---
 
+## ✨ Features
 
-| Country      | City           | Theme           | Poster |
-|:------------:|:--------------:|:---------------:|:------:|
-| USA          | San Francisco  | sunset          | <img src="posters/san_francisco_sunset_20260108_184122.png" width="250"> |
-| Spain        | Barcelona      | warm_beige      | <img src="posters/barcelona_warm_beige_20260108_172924.png" width="250"> |
-| Italy        | Venice         | blueprint       | <img src="posters/venice_blueprint_20260108_165527.png" width="250"> |
-| Japan        | Tokyo          | japanese_ink    | <img src="posters/tokyo_japanese_ink_20260108_165830.png" width="250"> |
-| India        | Mumbai         | contrast_zones  | <img src="posters/mumbai_contrast_zones_20260108_170325.png" width="250"> |
-| Morocco      | Marrakech      | terracotta      | <img src="posters/marrakech_terracotta_20260108_180821.png" width="250"> |
-| Singapore    | Singapore      | neon_cyberpunk  | <img src="posters/singapore_neon_cyberpunk_20260108_184503.png" width="250"> |
-| Australia    | Melbourne      | forest          | <img src="posters/melbourne_forest_20260108_181459.png" width="250"> |
-| UAE          | Dubai          | midnight_blue   | <img src="posters/dubai_midnight_blue_20260108_174920.png" width="250"> |
+- **🗺️ Complete Modular Engine**: Completely rewritten as a structured, clean, and highly maintainable Python package (`maptoposter/`).
+- **🧙‍♂️ Interactive Setup Wizard**: An intelligent CLI wizard that guides you through geocoding, theme selection, size guides, custom layouts, and saves your setup for future automated runs.
+- **🎨 21 Curated Premium Themes**: A gorgeous selection of styles from the historic `warm_beige` and minimalist `noir` to the custom-tailored `waterkant` and `leica` styles.
+- **📐 Dual Aspect Ratio Layouts**: 
+  - `portrait`: Classic high-end wall poster format.
+  - `landscape-plaque` / `gallery-plaque`: Gallery-style landscape plaque layout with a detailed metadata column on the right showing coordinates, weather, camera details, and region.
+- **🗺️ Country Locator Insets**: Add an elegant mini country locator map in any corner (`top-left`, `top-right`, etc.) with a red marker pointing exactly to the city.
+- **🌡️ Historical & Forecast Weather Integration**: Fetch and display precise temperature and weather descriptions (from Open-Meteo REST API) for the exact day and time your poster represents.
+- **🔴 Focus Markers & centering**: Highlight landmarks, childhood homes, or special coordinates with a beautifully rendered red marker.
+- **📝 Washi Paper Texture Overlay**: Apply an authentic, high-quality Japanese Washi paper texture overlay using advanced blending modes to give your poster a tactile, premium finish.
 
-## Installation
+---
+
+## 🚀 Installation
+
+Ensure you have your environment set up. Run the automatic installer or do it manually:
 
 ```bash
+# Manual installation
 pip install -r requirements.txt
 ```
 
-## Usage
+---
+
+## ⚓️ Quick Start
+
+Simply run the helper script to activate the virtual environment and start the generator:
+
+```bash
+# Start the interactive wizard directly (the easiest way!)
+./run.sh
+```
+
+---
+
+## 💻 CLI Usage
+
+For power users, scripts, and automation, the generator exposes a full suite of CLI options:
 
 ```bash
 python create_map_poster.py --city <city> --country <country> [options]
@@ -34,221 +56,188 @@ python create_map_poster.py --city <city> --country <country> [options]
 
 ### Options
 
-| Option | Short | Description | Default |
-|--------|-------|-------------|---------|
-| `--city` | `-c` | City name | required |
-| `--country` | `-C` | Country name | required |
-| `--theme` | `-t` | Theme name | feature_based |
-| `--distance` | `-d` | Map radius in meters | 29000 |
-| `--list-themes` | | List all available themes | |
+| Option | Short | Description | Default / Example |
+| :--- | :--- | :--- | :--- |
+| `--city` | `-c` | Name of the city | *Required* |
+| `--country` | `-C` | Name of the country | *Required* |
+| `--theme` | `-t` | Visual theme (21 pre-configured themes available) | `feature_based` |
+| `--distance` | `-d` | Map radius in meters (determines zoom level) | `29000` |
+| `--focus` | `-f` | Coordinates (`latitude,longitude`) to draw a red focal marker | `53.54129,9.9842` |
+| `--center-on-focus` | `-cf` | Center map directly on focus coordinates instead of city center | `Flag` |
+| `--show-inset` | `-i` | Enable country locator map inset | `Flag` |
+| `--inset-position` | `-ip` | Position of country locator map | `top-left` \| `top-right` \| `bottom-left` \| `bottom-right` |
+| `--date` | `-dt` | Date for weather and timestamp | `17.05.2026` or `2026-05-17` |
+| `--time` | `-tm` | Time for weather and timestamp | `18:30` |
+| `--no-weather` | | Show timestamp but disable fetching weather data | `Flag` |
+| `--layout` | `-l` | Poster layout format | `portrait` \| `landscape-plaque` |
+| `--no-card-title` | | Explicitly hide the title card directly on the map | `Flag` |
+| `--show-card-title` | | Explicitly show the title card directly on the map | `Flag` |
+| `--custom-note` | | Custom note / camera specifications for plaque layouts | `Leica M11, 35mm Summilux` |
+| `--paper-texture` | | Apply the authentic Japanese Washi paper texture overlay | `Flag` |
+| `--config` | | Path to a pre-defined JSON config file for headless wizard runs | `configs/my_setup.json` |
+| `--select-first` | `-y` | Force using the first match if city name is ambiguous | `Flag` |
+| `--list-themes` | | List all available themes with names and descriptions | `Flag` |
+| `--wizard` | `-w` | Launch the interactive Setup Wizard | `Flag` |
 
-### Examples
+---
+
+### 🎨 Curated Themes
+
+Choose from 21 gorgeous, tailor-made color palettes:
+
+- `feature_based`: Classic black & white with distinct road hierarchy.
+- `gradient_roads`: Smooth, sleek gradient shading.
+- `contrast_zones`: High contrast urban density.
+- `noir`: Deep minimalist black background with clean white/gray roads.
+- `midnight_blue`: Luxurious navy background with gold-colored roads.
+- `blueprint`: Architectural blueprint aesthetic.
+- `neon_cyberpunk`: High-voltage dark theme with electric pink and cyan.
+- `warm_beige`: Cozy, vintage sepia map tones.
+- `pastel_dream`: Muted, soft dreamy pastels.
+- `japanese_ink`: Minimalist organic ink wash style.
+- `forest`: Deep organic greens and sage tones.
+- `ocean`: Vivid blues and teals for coastal cities.
+- `terracotta`: Mediterranean brick-red warmth.
+- `sunset`: Vibrant warm oranges and pinks.
+- `autumn`: Seasonal burnt orange and rusty reds.
+- `copper_patina`: Oxidized copper and patina green.
+- `monochrome_blue`: Monochromatic ocean blue family.
+- `waterkant`: True maritime Waterkant design, deep sea blue and bright whites.
+- `leica`: Dedicated photography layout with high-contrast monochrome values.
+- `ralf` / `ralf2`: Premium personal layouts with tailor-made contrasts.
+
+---
+
+### 🧙‍♂️ Wizard Automation
+
+The interactive wizard allows you to build posters step-by-step and **save your configuration** to `configs/` as a JSON file. 
+
+You can run the wizard in **completely headless, non-interactive mode** by passing the saved configuration:
 
 ```bash
-# Iconic grid patterns
-python create_map_poster.py -c "New York" -C "USA" -t noir -d 12000           # Manhattan grid
-python create_map_poster.py -c "Barcelona" -C "Spain" -t warm_beige -d 8000   # Eixample district
-
-# Waterfront & canals
-python create_map_poster.py -c "Venice" -C "Italy" -t blueprint -d 4000       # Canal network
-python create_map_poster.py -c "Amsterdam" -C "Netherlands" -t ocean -d 6000  # Concentric canals
-python create_map_poster.py -c "Dubai" -C "UAE" -t midnight_blue -d 15000     # Palm & coastline
-
-# Radial patterns
-python create_map_poster.py -c "Paris" -C "France" -t pastel_dream -d 10000   # Haussmann boulevards
-python create_map_poster.py -c "Moscow" -C "Russia" -t noir -d 12000          # Ring roads
-
-# Organic old cities
-python create_map_poster.py -c "Tokyo" -C "Japan" -t japanese_ink -d 15000    # Dense organic streets
-python create_map_poster.py -c "Marrakech" -C "Morocco" -t terracotta -d 5000 # Medina maze
-python create_map_poster.py -c "Rome" -C "Italy" -t warm_beige -d 8000        # Ancient layout
-
-# Coastal cities
-python create_map_poster.py -c "San Francisco" -C "USA" -t sunset -d 10000    # Peninsula grid
-python create_map_poster.py -c "Sydney" -C "Australia" -t ocean -d 12000      # Harbor city
-python create_map_poster.py -c "Mumbai" -C "India" -t contrast_zones -d 18000 # Coastal peninsula
-
-# River cities
-python create_map_poster.py -c "London" -C "UK" -t noir -d 15000              # Thames curves
-python create_map_poster.py -c "Budapest" -C "Hungary" -t copper_patina -d 8000  # Danube split
-
-# List available themes
-python create_map_poster.py --list-themes
+python create_map_poster.py --config configs/my_saved_setup.json
 ```
 
-### Distance Guide
-
-| Distance | Best for |
-|----------|----------|
-| 4000-6000m | Small/dense cities (Venice, Amsterdam center) |
-| 8000-12000m | Medium cities, focused downtown (Paris, Barcelona) |
-| 15000-20000m | Large metros, full city view (Tokyo, Mumbai) |
-
-## Themes
-
-17 themes available in `themes/` directory:
-
-| Theme | Style |
-|-------|-------|
-| `feature_based` | Classic black & white with road hierarchy |
-| `gradient_roads` | Smooth gradient shading |
-| `contrast_zones` | High contrast urban density |
-| `noir` | Pure black background, white roads |
-| `midnight_blue` | Navy background with gold roads |
-| `blueprint` | Architectural blueprint aesthetic |
-| `neon_cyberpunk` | Dark with electric pink/cyan |
-| `warm_beige` | Vintage sepia tones |
-| `pastel_dream` | Soft muted pastels |
-| `japanese_ink` | Minimalist ink wash style |
-| `forest` | Deep greens and sage |
-| `ocean` | Blues and teals for coastal cities |
-| `terracotta` | Mediterranean warmth |
-| `sunset` | Warm oranges and pinks |
-| `autumn` | Seasonal burnt oranges and reds |
-| `copper_patina` | Oxidized copper aesthetic |
-| `monochrome_blue` | Single blue color family |
-
-## Output
-
-Posters are saved to `posters/` directory with format:
-```
-{city}_{theme}_{YYYYMMDD_HHMMSS}.png
-```
-
-## Adding Custom Themes
-
-Create a JSON file in `themes/` directory:
-
+**Example Configuration File (`configs/elbphilharmonie.json`):**
 ```json
 {
-  "name": "My Theme",
-  "description": "Description of the theme",
-  "bg": "#FFFFFF",
-  "text": "#000000",
-  "gradient_color": "#FFFFFF",
-  "water": "#C0C0C0",
-  "parks": "#F0F0F0",
-  "road_motorway": "#0A0A0A",
-  "road_primary": "#1A1A1A",
-  "road_secondary": "#2A2A2A",
-  "road_tertiary": "#3A3A3A",
-  "road_residential": "#4A4A4A",
-  "road_default": "#3A3A3A"
+    "query": "Elbphilharmonie Hamburg",
+    "location_choice": "1",
+    "focus_choice": "2",
+    "city": "Elbphilharmonie",
+    "country": "Germany",
+    "theme_choice": "noir",
+    "dist_choice": "1",
+    "inset_choice": "1",
+    "weather_time_choice": "1",
+    "layout_choice": "1",
+    "use_paper_texture": "yes",
+    "confirm_generation": "yes",
+    "save_config_name": "n"
 }
 ```
 
-## Project Structure
+---
+
+## 🛠️ Project Structure
 
 ```
-map_poster/
-├── create_map_poster.py          # Main script
-├── themes/               # Theme JSON files
-├── fonts/                # Roboto font files
-├── posters/              # Generated posters
+maptoposter_extended/
+├── maptoposter/          # Core package modules
+│   ├── __init__.py       # Package initialization
+│   ├── cli.py            # CLI entry and arg parsing
+│   ├── geocoding.py      # Nominatim & Geopy geographical lookups
+│   ├── generator.py      # Matplotlib and PIL rendering engine
+│   ├── theme.py          # Theme loader and Font managers
+│   ├── weather.py        # Open-Meteo REST API & WMO parser
+│   └── wizard.py         # Step-by-step interactive wizard dialog
+├── themes/               # Curated JSON theme palettes
+├── fonts/                # Custom TTF fonts (e.g. Roboto)
+├── posters/              # Generated high-resolution output files
+├── assets/               # Static assets (Washi texture overlay)
+├── configs/              # User-saved wizard configurations
+├── create_map_poster.py  # Thin orchestrator and entrypoint
+├── run.sh                # Virtual env setup helper
 └── README.md
 ```
 
-## Hacker's Guide
+---
 
-Quick reference for contributors who want to extend or modify the script.
+## 💻 Hacker's Guide
 
-### Architecture Overview
+This guide details internal mechanisms for developers extending the generator.
 
-```
-┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐
-│   CLI Parser    │────▶│  Geocoding   │────▶│  Data Fetching  │
-│   (argparse)    │     │  (Nominatim) │     │    (OSMnx)      │
-└─────────────────┘     └──────────────┘     └─────────────────┘
-                                                     │
-                        ┌──────────────┐             ▼
-                        │    Output    │◀────┌─────────────────┐
-                        │  (matplotlib)│     │   Rendering     │
-                        └──────────────┘     │  (matplotlib)   │
-                                             └─────────────────┘
-```
-
-### Key Functions
-
-| Function | Purpose | Modify when... |
-|----------|---------|----------------|
-| `get_coordinates()` | City → lat/lon via Nominatim | Switching geocoding provider |
-| `create_poster()` | Main rendering pipeline | Adding new map layers |
-| `get_edge_colors_by_type()` | Road color by OSM highway tag | Changing road styling |
-| `get_edge_widths_by_type()` | Road width by importance | Adjusting line weights |
-| `create_gradient_fade()` | Top/bottom fade effect | Modifying gradient overlay |
-| `load_theme()` | JSON theme → dict | Adding new theme properties |
-
-### Rendering Layers (z-order)
+### Pipeline Architecture
 
 ```
-z=11  Text labels (city, country, coords)
-z=10  Gradient fades (top & bottom)
-z=3   Roads (via ox.plot_graph)
-z=2   Parks (green polygons)
-z=1   Water (blue polygons)
-z=0   Background color
+                               ┌──────────────────┐
+                               │ create_map_poster│
+                               └──────────────────┘
+                                        │
+                                        ▼
+                                ┌───────────────┐
+                                │   maptoposter │
+                                └───────────────┘
+                                        │
+                  ┌─────────────┬───────┴─────┬─────────────┐
+                  ▼             ▼             ▼             ▼
+             ┌──────────┐ ┌──────────┐  ┌───────────┐ ┌───────────┐
+             │  cli.py  │ │wizard.py │  │theme.py   │ │generator.e│
+             └──────────┘ └──────────┘  └───────────┘ └───────────┘
+                                                            │
+                                                      ┌─────┴─────┐
+                                                      ▼           ▼
+                                                ┌──────────┐┌───────────┐
+                                                │geocoding.││weather.py │
+                                                └──────────┘└───────────┘
 ```
 
-### OSM Highway Types → Road Hierarchy
+### Z-Order & Rendering Layers
 
-```python
-# In get_edge_colors_by_type() and get_edge_widths_by_type()
-motorway, motorway_link     → Thickest (1.2), darkest
-trunk, primary              → Thick (1.0)
-secondary                   → Medium (0.8)
-tertiary                    → Thin (0.6)
-residential, living_street  → Thinnest (0.4), lightest
+When rendering elements in `create_poster()`, the layer stacking order ensures premium styling without overlaps:
+
+| Z-Order | Elements | Description |
+| :--- | :--- | :--- |
+| `11` | Text Labels | Spaced City title, country, coordinates, and attributions |
+| `10` | Gradient Fades | Top and bottom custom ListedColormap alpha gradients |
+| `9` | Focus Point | Red focal marker dot with a crisp white border |
+| `3` | Roads | Plotted OSMnx networks colored based on highway hierarchy |
+| `2` | Parks | Green spaces and leisure polygons |
+| `1` | Water | Canals, rivers, oceans, and natural waterways |
+| `0` | Background | Base canvas background color |
+
+### Custom Theme Schema
+
+Themes are simple, declarative JSON files. You can customize focus point sizing and colors inside the JSON:
+
+```json
+{
+  "name": "Maritime Waterkant",
+  "description": "True maritime deep sea blue and bright whites",
+  "bg": "#0D1B2A",
+  "text": "#E0E1DD",
+  "gradient_color": "#0D1B2A",
+  "water": "#1B263B",
+  "parks": "#415A77",
+  "road_motorway": "#FFFFFF",
+  "road_primary": "#E0E1DD",
+  "road_secondary": "#A5A5A5",
+  "road_tertiary": "#7B8C9E",
+  "road_residential": "#4F5D75",
+  "road_default": "#3D4856",
+  "focus_color": "#D62828",
+  "focus_size": 400,
+  "focus_edge_color": "white",
+  "focus_edge_width": 2.5
+}
 ```
 
-### Adding New Features
+---
 
-**New map layer (e.g., railways):**
-```python
-# In create_poster(), after parks fetch:
-try:
-    railways = ox.features_from_point(point, tags={'railway': 'rail'}, dist=dist)
-except:
-    railways = None
+## ⚖️ License
 
-# Then plot before roads:
-if railways is not None and not railways.empty:
-    railways.plot(ax=ax, color=THEME['railway'], linewidth=0.5, zorder=2.5)
-```
+Distributed under the MIT License. See `LICENSE` for more information.
 
-**New theme property:**
-1. Add to theme JSON: `"railway": "#FF0000"`
-2. Use in code: `THEME['railway']`
-3. Add fallback in `load_theme()` default dict
+---
 
-### Typography Positioning
-
-All text uses `transform=ax.transAxes` (0-1 normalized coordinates):
-```
-y=0.14  City name (spaced letters)
-y=0.125 Decorative line
-y=0.10  Country name
-y=0.07  Coordinates
-y=0.02  Attribution (bottom-right)
-```
-
-### Useful OSMnx Patterns
-
-```python
-# Get all buildings
-buildings = ox.features_from_point(point, tags={'building': True}, dist=dist)
-
-# Get specific amenities
-cafes = ox.features_from_point(point, tags={'amenity': 'cafe'}, dist=dist)
-
-# Different network types
-G = ox.graph_from_point(point, dist=dist, network_type='drive')  # roads only
-G = ox.graph_from_point(point, dist=dist, network_type='bike')   # bike paths
-G = ox.graph_from_point(point, dist=dist, network_type='walk')   # pedestrian
-```
-
-### Performance Tips
-
-- Large `dist` values (>20km) = slow downloads + memory heavy
-- Cache coordinates locally to avoid Nominatim rate limits
-- Use `network_type='drive'` instead of `'all'` for faster renders
-- Reduce `dpi` from 300 to 150 for quick previews
+⚓️ *Developed with passion for premium cartographic art.*

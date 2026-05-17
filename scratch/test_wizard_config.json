@@ -1,0 +1,15 @@
+{
+    "query": "Elbphilharmonie Hamburg",
+    "location_choice": "1",
+    "focus_choice": "2",
+    "city": "Elbphilharmonie",
+    "country": "Germany",
+    "theme_choice": "noir",
+    "dist_choice": "1",
+    "inset_choice": "1",
+    "weather_time_choice": "1",
+    "layout_choice": "1",
+    "use_paper_texture": "yes",
+    "confirm_generation": "yes",
+    "save_config_name": "n"
+}
