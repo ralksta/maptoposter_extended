@@ -196,6 +196,7 @@ def get_edge_widths_by_type(G):
 def get_coordinates(city, country):
     """
     Fetches coordinates for a given city and country using geopy.
+    Returns a list of Location objects or None if no results found.
     Includes rate limiting to be respectful to the geocoding service.
     """
     print("Looking up coordinates...")
@@ -204,14 +205,11 @@ def get_coordinates(city, country):
     # Add a small delay to respect Nominatim's usage policy
     time.sleep(1)
     
-    location = geolocator.geocode(f"{city}, {country}")
-    
-    if location:
-        print(f"✓ Found: {location.address}")
-        print(f"✓ Coordinates: {location.latitude}, {location.longitude}")
-        return (location.latitude, location.longitude)
-    else:
-        raise ValueError(f"Could not find coordinates for {city}, {country}")
+    try:
+        locations = geolocator.geocode(f"{city}, {country}", exactly_one=False, timeout=10)
+        return locations
+    except Exception as e:
+        raise RuntimeError(f"API Error during geocoding: {e}")
 
 def create_poster(city, country, point, dist, output_file, focus_point=None):
     print(f"\nGenerating map for {city}, {country}...")
@@ -422,19 +420,68 @@ def run_interactive_wizard():
     print("=" * 60)
     print("Lass uns zusammen ein fettes Map-Poster basteln. Trag einfach die Infos ein.\n")
     
-    # 1. City
+    # 1. City & 2. Country inputs with immediate verification and selection of matches
     while True:
-        city = input("👉 Welche Stadt soll aufs Poster? (z.B. Hamburg, Tokyo, New York): ").strip()
-        if city:
-            break
-        print("⚠ Ohne Stadt läuft hier gar nix, Diggi! Trag bitte einen Namen ein.")
-        
-    # 2. Country
-    while True:
-        country = input(f"👉 In welchem Land liegt {city}? (z.B. Germany, Japan, USA): ").strip()
-        if country:
-            break
-        print("⚠ Das Land brauche ich für die präzise Suche, trag das bitte noch ein.")
+        while True:
+            city = input("👉 Welche Stadt soll aufs Poster? (z.B. Hamburg, Tokyo, New York): ").strip()
+            if city:
+                break
+            print("⚠ Ohne Stadt läuft hier gar nix, Diggi! Trag bitte einen Namen ein.")
+            
+        while True:
+            country = input(f"👉 In welchem Land liegt {city}? (z.B. Germany, Japan, USA): ").strip()
+            if country:
+                break
+            print("⚠ Das Land brauche ich für die präzise Suche, trag das bitte noch ein.")
+            
+        try:
+            locations = get_coordinates(city, country)
+            if not locations:
+                print(f"\n⚠ Fehler: Konnte keine Koordinaten für '{city}, {country}' finden! Bitte überprüfe die Schreibweise und versuche es erneut.\n")
+                continue
+                
+            if len(locations) == 1:
+                selected_loc = locations[0]
+                coords = (selected_loc.latitude, selected_loc.longitude)
+                resolved_address = selected_loc.address
+                print(f"✓ Eindeutig gefunden: {resolved_address}")
+                print(f"✓ Koordinaten: {coords[0]}, {coords[1]}\n")
+                break
+            else:
+                # Multiple matches!
+                print(f"\n🔎 Es wurden {len(locations)} passende Orte gefunden. Welchen Kutter meinst du?")
+                top_locations = locations[:5]
+                for idx, loc in enumerate(top_locations, 1):
+                    print(f"  [{idx}] {loc.address}")
+                print("  [0] Keiner davon (Suche verfeinern)")
+                
+                while True:
+                    choice = input(f"Wähle eine Option [1-{len(top_locations)}] oder 0 (Standard: 1): ").strip()
+                    if not choice:
+                        choice_idx = 1
+                    else:
+                        try:
+                            choice_idx = int(choice)
+                        except ValueError:
+                            print("⚠ Bitte gib eine Zahl ein, Diggi!")
+                            continue
+                            
+                    if choice_idx == 0:
+                        print("\nAlles klar, lass uns die Suche verfeinern.\n")
+                        break  # Breaks inner selection loop, goes back to city/country input
+                    elif 1 <= choice_idx <= len(top_locations):
+                        selected_loc = top_locations[choice_idx - 1]
+                        coords = (selected_loc.latitude, selected_loc.longitude)
+                        resolved_address = selected_loc.address
+                        print(f"✓ Ausgewählt: {resolved_address}")
+                        print(f"✓ Koordinaten: {coords[0]}, {coords[1]}\n")
+                        break
+                        
+                if choice_idx != 0:
+                    break  # Break outer city/country lookup loop as we have a valid selection!
+                    
+        except Exception as e:
+            print(f"\n⚠ Fehler bei der Ortssuche: {e}. Bitte versuche es noch einmal.\n")
         
     # 3. Theme
     available_themes = get_available_themes()
@@ -568,7 +615,8 @@ def run_interactive_wizard():
         THEME = load_theme(theme)
         
         try:
-            coords = get_coordinates(city, country)
+            # We already have valid coords and resolved_address from the loop above.
+            # No need to query get_coordinates again! This respects Nominatim's rate limits and avoids bugs.
             
             # Resolve actual focus coordinates
             actual_focus_coords = None
@@ -613,6 +661,7 @@ Examples:
     parser.add_argument('--focus', '-f', type=str, help='Focus point coordinates (latitude,longitude) to plot a red marker')
     parser.add_argument('--list-themes', action='store_true', help='List all available themes')
     parser.add_argument('--wizard', '-w', action='store_true', help='Start interactive wizard')
+    parser.add_argument('--select-first', '-y', action='store_true', help='Force using the first match if city name is ambiguous')
     
     args = parser.parse_args()
     
@@ -660,7 +709,28 @@ Examples:
             
     # Get coordinates and generate poster
     try:
-        coords = get_coordinates(args.city, args.country)
+        locations = get_coordinates(args.city, args.country)
+        if not locations:
+            print(f"Error: Konnte keine Koordinaten für '{args.city}, {args.country}' finden! Bitte überprüfe die Schreibweise.")
+            os.sys.exit(1)
+            
+        if len(locations) == 1:
+            coords = (locations[0].latitude, locations[0].longitude)
+            print(f"✓ Ort eindeutig gefunden: {locations[0].address}")
+        else:
+            # Ambiguity!
+            if args.select_first:
+                coords = (locations[0].latitude, locations[0].longitude)
+                print(f"\033[93m⚠ Warnung: Mehrere Treffer für '{args.city}, {args.country}' gefunden!\033[0m")
+                print(f"\033[93m  Wir verwenden den ersten Treffer: {locations[0].address}\033[0m")
+            else:
+                print(f"\n✗ Error: Der Ort '{args.city}, {args.country}' ist nicht eindeutig! Es wurden {len(locations)} Übereinstimmungen gefunden:")
+                top_locations = locations[:5]
+                for idx, loc in enumerate(top_locations, 1):
+                    print(f"  [{idx}] {loc.address}")
+                print("\n💡 Tipp: Nutze den interaktiven Wizard (ohne Parameter oder mit -w) oder übergib '-y' / '--select-first', um den ersten Treffer zu erzwingen.")
+                os.sys.exit(1)
+                
         output_file = generate_output_filename(args.city, args.theme)
         create_poster(args.city, args.country, coords, args.distance, output_file, focus_point=focus_coords)
         
