@@ -206,10 +206,53 @@ def get_coordinates(city, country):
     time.sleep(1)
     
     try:
-        locations = geolocator.geocode(f"{city}, {country}", exactly_one=False, timeout=10)
+        locations = geolocator.geocode(f"{city}, {country}", exactly_one=False, timeout=10, addressdetails=True)
         return locations
     except Exception as e:
         raise RuntimeError(f"API Error during geocoding: {e}")
+
+def search_location(query):
+    """
+    Searches coordinates and address details for a given query (address, landmark, coordinates).
+    Returns a list of Location objects or None if no results found.
+    """
+    print(f"Searching for '{query}'...")
+    geolocator = Nominatim(user_agent="city_map_poster")
+    
+    # Add a small delay to respect Nominatim's usage policy
+    time.sleep(1)
+    
+    try:
+        locations = geolocator.geocode(query, exactly_one=False, timeout=10, addressdetails=True)
+        return locations
+    except Exception as e:
+        raise RuntimeError(f"API Error during geocoding: {e}")
+
+def get_city_from_address(location):
+    """
+    Intelligently extracts the best city/town/village/municipality name from Nominatim addressdetails.
+    """
+    if not location or not hasattr(location, 'raw'):
+        return ""
+    address = location.raw.get('address', {})
+    if not address:
+        return ""
+    
+    # Order of preference for determining the "city/town" name on a poster
+    for key in ['city', 'town', 'village', 'municipality', 'suburb', 'hamlet', 'county', 'province', 'state', 'region']:
+        if key in address:
+            return address[key]
+    return ""
+
+def get_country_from_address(location):
+    """
+    Extracts the country name from Nominatim addressdetails.
+    """
+    if not location or not hasattr(location, 'raw'):
+        return ""
+    address = location.raw.get('address', {})
+    return address.get('country', "")
+
 
 def create_poster(city, country, point, dist, output_file, focus_point=None):
     print(f"\nGenerating map for {city}, {country}...")
@@ -270,6 +313,17 @@ def create_poster(city, country, point, dist, output_file, focus_point=None):
         edge_linewidth=edge_widths,
         show=False, close=False
     )
+    
+    # Set explicit axis limits to ensure the center coordinates are perfectly in the middle of the poster
+    import math
+    lat, lon = point
+    # 1 degree of latitude is ~111,111 meters
+    delta_lat = dist / 111111.0
+    # 1 degree of longitude depends on latitude: ~111,111 * cos(latitude) meters
+    delta_lon = dist / (111111.0 * math.cos(math.radians(lat)))
+    
+    ax.set_xlim(lon - delta_lon, lon + delta_lon)
+    ax.set_ylim(lat - delta_lat, lat + delta_lat)
     
     # Layer 2.5: Fokus-Punkt (falls gesetzt)
     if focus_point is not None:
@@ -420,24 +474,23 @@ def run_interactive_wizard():
     print("=" * 60)
     print("Lass uns zusammen ein fettes Map-Poster basteln. Trag einfach die Infos ein.\n")
     
-    # 1. City & 2. Country inputs with immediate verification and selection of matches
+    coords = None
+    actual_focus_coords = None
+    city = ""
+    country = ""
+    selected_loc = None
+    
+    # 1. Ort/Fokuspunkt direkt abfragen & geokodieren
     while True:
-        while True:
-            city = input("👉 Welche Stadt soll aufs Poster? (z.B. Hamburg, Tokyo, New York): ").strip()
-            if city:
-                break
-            print("⚠ Ohne Stadt läuft hier gar nix, Diggi! Trag bitte einen Namen ein.")
-            
-        while True:
-            country = input(f"👉 In welchem Land liegt {city}? (z.B. Germany, Japan, USA): ").strip()
-            if country:
-                break
-            print("⚠ Das Land brauche ich für die präzise Suche, trag das bitte noch ein.")
+        query = input("👉 Welchen Ort, welche Sehenswürdigkeit oder Adresse willst du zeigen? (z.B. 'Tokyo', 'Elbphilharmonie Hamburg'): ").strip()
+        if not query:
+            print("⚠ Ohne Ort läuft hier gar nix, Diggi! Trag bitte einen Namen ein.")
+            continue
             
         try:
-            locations = get_coordinates(city, country)
+            locations = search_location(query)
             if not locations:
-                print(f"\n⚠ Fehler: Konnte keine Koordinaten für '{city}, {country}' finden! Bitte überprüfe die Schreibweise und versuche es erneut.\n")
+                print(f"\n⚠ Fehler: Konnte '{query}' nicht finden! Bitte überprüfe die Eingabe.\n")
                 continue
                 
             if len(locations) == 1:
@@ -449,7 +502,7 @@ def run_interactive_wizard():
                 break
             else:
                 # Multiple matches!
-                print(f"\n🔎 Es wurden {len(locations)} passende Orte gefunden. Welchen Kutter meinst du?")
+                print(f"\n🔎 Es wurden {len(locations)} passende Orte gefunden. Welchen meinst du?")
                 top_locations = locations[:5]
                 for idx, loc in enumerate(top_locations, 1):
                     print(f"  [{idx}] {loc.address}")
@@ -468,7 +521,7 @@ def run_interactive_wizard():
                             
                     if choice_idx == 0:
                         print("\nAlles klar, lass uns die Suche verfeinern.\n")
-                        break  # Breaks inner selection loop, goes back to city/country input
+                        break  # Breaks inner selection loop, goes back to query input
                     elif 1 <= choice_idx <= len(top_locations):
                         selected_loc = top_locations[choice_idx - 1]
                         coords = (selected_loc.latitude, selected_loc.longitude)
@@ -478,12 +531,53 @@ def run_interactive_wizard():
                         break
                         
                 if choice_idx != 0:
-                    break  # Break outer city/country lookup loop as we have a valid selection!
+                    break  # Break outer lookup loop
                     
         except Exception as e:
             print(f"\n⚠ Fehler bei der Ortssuche: {e}. Bitte versuche es noch einmal.\n")
+
+    # 2. Fokus-Marker abfragen
+    print("👉 Möchtest du an diesem Ort einen roten Fokuspunkt-Marker einzeichnen?")
+    print("  [1] Nein, nackte Karte zentriert auf diesen Ort (Standard - ideal für Stadtkarten)")
+    print("  [2] Ja, roten Fokuspunkt-Marker auf den Koordinaten platzieren")
+    
+    while True:
+        choice = input("Wähle eine Option [1-2] (Standard: 1): ").strip()
+        if not choice or choice == '1':
+            actual_focus_coords = None
+            print("✓ Karte wird zentriert, nackt ohne roten Marker gezeichnet.\n")
+            break
+        if choice == '2':
+            actual_focus_coords = coords
+            print("✓ Roter Fokuspunkt-Marker wird auf den Koordinaten eingezeichnet!\n")
+            break
+        print("⚠ Ungültige Auswahl. Bitte wähle 1 oder 2.")
+
+    # 3. Beschriftung (Titel & Untertitel) mit intelligenten Vorschlägen abfragen
+    detected_city = get_city_from_address(selected_loc)
+    detected_country = get_country_from_address(selected_loc)
+    
+    print("👉 Lass uns jetzt die Beschriftung (Titel & Untertitel) für dein Poster festlegen.")
+    
+    while True:
+        city_prompt = f"👉 Haupttitel für das Poster (Standard: {detected_city}): " if detected_city else "👉 Haupttitel für das Poster (z.B. Hamburg): "
+        city_input = input(city_prompt).strip()
+        if not city_input:
+            city = detected_city
+        else:
+            city = city_input
+        if city:
+            break
+        print("⚠ Ein Haupttitel wird benötigt, Diggi!")
         
-    # 3. Theme
+    country_prompt = f"👉 Untertitel für das Poster (Standard: {detected_country}): " if detected_country else "👉 Untertitel für das Poster (z.B. Germany): "
+    country_input = input(country_prompt).strip()
+    if not country_input:
+        country = detected_country
+    else:
+        country = country_input
+
+    # 4. Theme
     available_themes = get_available_themes()
     print("\n👉 Welches Farbschema (Theme) hättest du gerne?")
     if available_themes:
@@ -529,7 +623,7 @@ def run_interactive_wizard():
         print("  (Keine Themes im Ordner gefunden. Benutze Standard 'feature_based')")
         theme = "feature_based"
 
-    # 4. Distance
+    # 5. Distance
     print("\n👉 Welchen Bildausschnitt (Radius in Metern) möchtest du zeigen?")
     print("  [1] Fokus auf die Innenstadt / Enger Ausschnitt (ca. 5.000m)")
     print("  [2] Fokus auf die Stadt / Mittlerer Ausschnitt (ca. 10.000m) -- Empfohlen!")
@@ -564,48 +658,16 @@ def run_interactive_wizard():
         else:
             print("⚠ Ungültige Auswahl. Bitte wähle eine Option von 1 bis 4.")
             
-    # 5. Focus point
-    print("\n👉 Möchtest du einen roten Fokus-Punkt (Marker) auf dem Poster platzieren?")
-    print("  [1] Kein Fokus-Punkt (Standard)")
-    print("  [2] Fokus-Punkt auf die Stadtmitte setzen")
-    print("  [3] Eigene Koordinaten eingeben")
-    
-    focus_mode = '1'
-    focus_coords = None
-    
-    while True:
-        focus_choice = input("Wähle eine Option [1-3] (Standard: 1 -> Kein Fokus-Punkt): ").strip()
-        if not focus_choice:
-            focus_mode = '1'
-            break
-        if focus_choice in ['1', '2']:
-            focus_mode = focus_choice
-            break
-        elif focus_choice == '3':
-            focus_mode = '3'
-            while True:
-                custom_focus = input("Gib die Koordinaten ein (Format: latitude,longitude - z.B. 53.5458,9.9666): ").strip()
-                try:
-                    lat_str, lon_str = custom_focus.split(',')
-                    focus_coords = (float(lat_str.strip()), float(lon_str.strip()))
-                    break
-                except ValueError:
-                    print("⚠ Ungültiges Format. Bitte 'latitude,longitude' eingeben (z.B. 53.5458,9.9666).")
-            break
-        else:
-            print("⚠ Ungültige Auswahl. Bitte wähle eine Option von 1 bis 3.")
-            
     print("\n" + "=" * 50)
     print("Alles klar, Diggi! Hier ist dein Fahrplan:")
-    print(f"  📍 Stadt:    {city}, {country}")
+    print(f"  📍 Haupttitel: {city}")
+    print(f"  📍 Untertitel: {country}")
     print(f"  🎨 Farbschema: {theme}")
-    print(f"  📐 Radius:   {distance} Meter")
-    if focus_mode == '1':
-        print("  🔴 Fokus-Punkt: Keiner")
-    elif focus_mode == '2':
-        print("  🔴 Fokus-Punkt: Stadtmitte")
-    elif focus_mode == '3':
-        print(f"  🔴 Fokus-Punkt: {focus_coords[0]:.4f}, {focus_coords[1]:.4f}")
+    print(f"  📐 Radius:     {distance} Meter")
+    if actual_focus_coords is None:
+        print("  🔴 Fokus-Punkt: Keiner (nackte Karte zentriert)")
+    else:
+        print(f"  🔴 Fokus-Punkt: {actual_focus_coords[0]:.4f}, {actual_focus_coords[1]:.4f} (Mit Marker und zentriert)")
     print("=" * 50 + "\n")
     
     confirm = input("Sollen wir das Poster so generieren? [Y/n]: ").strip().lower()
@@ -615,16 +677,6 @@ def run_interactive_wizard():
         THEME = load_theme(theme)
         
         try:
-            # We already have valid coords and resolved_address from the loop above.
-            # No need to query get_coordinates again! This respects Nominatim's rate limits and avoids bugs.
-            
-            # Resolve actual focus coordinates
-            actual_focus_coords = None
-            if focus_mode == '2':
-                actual_focus_coords = coords
-            elif focus_mode == '3':
-                actual_focus_coords = focus_coords
-                
             output_file = generate_output_filename(city, theme)
             create_poster(city, country, coords, distance, output_file, focus_point=actual_focus_coords)
             
@@ -659,6 +711,7 @@ Examples:
     parser.add_argument('--theme', '-t', type=str, default='feature_based', help='Theme name (default: feature_based)')
     parser.add_argument('--distance', '-d', type=int, default=29000, help='Map radius in meters (default: 29000)')
     parser.add_argument('--focus', '-f', type=str, help='Focus point coordinates (latitude,longitude) to plot a red marker')
+    parser.add_argument('--center-on-focus', '-cf', action='store_true', help='Center map directly on the focus coordinates instead of the city center')
     parser.add_argument('--list-themes', action='store_true', help='List all available themes')
     parser.add_argument('--wizard', '-w', action='store_true', help='Start interactive wizard')
     parser.add_argument('--select-first', '-y', action='store_true', help='Force using the first match if city name is ambiguous')
@@ -707,6 +760,11 @@ Examples:
             print(f"Error: Ungültiges Format für --focus. Muss 'latitude,longitude' sein (z.B. '53.5511,9.9937').")
             os.sys.exit(1)
             
+    # Validate --center-on-focus has --focus
+    if args.center_on_focus and not focus_coords:
+        print("Error: --center-on-focus / -cf benötigt einen Fokuspunkt via --focus / -f!")
+        os.sys.exit(1)
+            
     # Get coordinates and generate poster
     try:
         locations = get_coordinates(args.city, args.country)
@@ -732,7 +790,15 @@ Examples:
                 os.sys.exit(1)
                 
         output_file = generate_output_filename(args.city, args.theme)
-        create_poster(args.city, args.country, coords, args.distance, output_file, focus_point=focus_coords)
+        
+        # Determine center coords
+        if args.center_on_focus:
+            center_coords = focus_coords
+            print(f"✓ Kartenausschnitt wird auf den Fokus-Punkt zentriert: {center_coords}")
+        else:
+            center_coords = coords
+            
+        create_poster(args.city, args.country, center_coords, args.distance, output_file, focus_point=focus_coords)
         
         print("\n" + "=" * 50)
         print("✓ Poster generation complete!")
