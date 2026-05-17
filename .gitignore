@@ -4,3 +4,7 @@ env/
 posters/*.png
 .DS_Store
 __pycache__/
+
+# Leica - Proprietary assets
+fonts/Leica-*.ttf
+themes/leica.json
