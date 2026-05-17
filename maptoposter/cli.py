@@ -124,8 +124,27 @@ Examples:
     parser.add_argument('--show-card-title', action='store_true', default=None, help='Explicitly show the title directly on the map')
     parser.add_argument('--paper-texture', action='store_true', help='Apply a subtle Japanese Washi paper texture overlay to the final poster')
     parser.add_argument('--config', type=str, help='Path to a JSON configuration file to prepopulate wizard inputs')
+    parser.add_argument('--format', '-fmt', type=str, default='png', choices=['png', 'svg', 'pdf'], help='Output format (default: png)')
+    parser.add_argument('--latitude', '-lat', type=float, help='Manual latitude coordinates to bypass Nominatim')
+    parser.add_argument('--longitude', '-long', type=float, help='Manual longitude coordinates to bypass Nominatim')
+    parser.add_argument('--font-family', '--font', type=str, help='Custom Google Font family')
+    parser.add_argument('--width', '-W', type=float, help='Custom width in inches (max 20.0)')
+    parser.add_argument('--height', '-H', type=float, help='Custom height in inches (max 20.0)')
     
     args = parser.parse_args()
+    
+    # Cap width and height at 20.0 inches
+    if args.width is not None and args.width > 20.0:
+        print(f"\033[93m⚠ Warnung: Breite von {args.width} Zoll überschreitet das Limit! Wir deckeln sie auf 20.0 Zoll, um Abstürze zu vermeiden.\033[0m")
+        args.width = 20.0
+    if args.height is not None and args.height > 20.0:
+        print(f"\033[93m⚠ Warnung: Höhe von {args.height} Zoll überschreitet das Limit! Wir deckeln sie auf 20.0 Zoll, um Abstürze zu vermeiden.\033[0m")
+        args.height = 20.0
+        
+    # Validate manual coordinates have both lat and long
+    if (args.latitude is not None and args.longitude is None) or (args.latitude is None and args.longitude is not None):
+        print("Error: Für manuelle Koordinaten müssen sowohl --latitude (-lat) als auch --longitude (-long) angegeben werden!")
+        sys.exit(1)
     
     # If no arguments provided or --wizard flag is used, run the wizard
     if len(sys.argv) == 1 or args.wizard or args.config:
@@ -176,30 +195,34 @@ Examples:
             
     # Get coordinates and generate poster
     try:
-        locations = get_coordinates(args.city, args.country)
-        if not locations:
-            print(f"Error: Konnte keine Koordinaten für '{args.city}, {args.country}' finden! Bitte überprüfe die Schreibweise.")
-            sys.exit(1)
-            
         region = None
-        if len(locations) == 1:
-            coords = (locations[0].latitude, locations[0].longitude)
-            print(f"✓ Ort eindeutig gefunden: {locations[0].address}")
-            region = get_region_from_address(locations[0])
+        if args.latitude is not None and args.longitude is not None:
+            coords = (args.latitude, args.longitude)
+            print(f"✓ Manuelle GPS-Koordinaten verwendet: {coords} (Nominatim übersprungen)")
         else:
-            # Ambiguity!
-            if args.select_first:
+            locations = get_coordinates(args.city, args.country)
+            if not locations:
+                print(f"Error: Konnte keine Koordinaten für '{args.city}, {args.country}' finden! Bitte überprüfe die Schreibweise.")
+                sys.exit(1)
+                
+            if len(locations) == 1:
                 coords = (locations[0].latitude, locations[0].longitude)
-                print(f"\033[93m⚠ Warnung: Mehrere Treffer für '{args.city}, {args.country}' gefunden!\033[0m")
-                print(f"\033[93m  Wir verwenden den ersten Treffer: {locations[0].address}\033[0m")
+                print(f"✓ Ort eindeutig gefunden: {locations[0].address}")
                 region = get_region_from_address(locations[0])
             else:
-                print(f"\n✗ Error: Der Ort '{args.city}, {args.country}' ist nicht eindeutig! Es wurden {len(locations)} Übereinstimmungen gefunden:")
-                top_locations = locations[:5]
-                for idx, loc in enumerate(top_locations, 1):
-                    print(f"  [{idx}] {loc.address}")
-                print("\n💡 Tipp: Nutze den interaktiven Wizard (ohne Parameter oder mit -w) oder übergib '-y' / '--select-first', um den ersten Treffer zu erzwingen.")
-                sys.exit(1)
+                # Ambiguity!
+                if args.select_first:
+                    coords = (locations[0].latitude, locations[0].longitude)
+                    print(f"\033[93m⚠ Warnung: Mehrere Treffer für '{args.city}, {args.country}' gefunden!\033[0m")
+                    print(f"\033[93m  Wir verwenden den ersten Treffer: {locations[0].address}\033[0m")
+                    region = get_region_from_address(locations[0])
+                else:
+                    print(f"\n✗ Error: Der Ort '{args.city}, {args.country}' ist nicht eindeutig! Es wurden {len(locations)} Übereinstimmungen gefunden:")
+                    top_locations = locations[:5]
+                    for idx, loc in enumerate(top_locations, 1):
+                        print(f"  [{idx}] {loc.address}")
+                    print("\n💡 Tipp: Nutze den interaktiven Wizard (ohne Parameter oder mit -w) oder übergib '-y' / '--select-first', um den ersten Treffer zu erzwingen.")
+                    sys.exit(1)
                 
         # Resolve no-card-title value
         no_card_title_val = None
@@ -208,7 +231,7 @@ Examples:
         elif args.show_card_title:
             no_card_title_val = False
             
-        output_file = generate_output_filename(args.city, args.theme, layout=args.layout)
+        output_file = generate_output_filename(args.city, args.theme, layout=args.layout, output_format=args.format)
         
         # Determine center coords
         if args.center_on_focus:
@@ -234,7 +257,10 @@ Examples:
             no_card_title=no_card_title_val, 
             region=region, 
             custom_note=args.custom_note, 
-            use_paper_texture=args.paper_texture
+            use_paper_texture=args.paper_texture,
+            font_family=args.font_family,
+            width=args.width,
+            height=args.height
         )
         
         print("\n" + "=" * 50)

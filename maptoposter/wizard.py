@@ -46,61 +46,95 @@ def run_interactive_wizard(config_path=None):
     country = ""
     selected_loc = None
     
-    # 1. Ort/Fokuspunkt direkt abfragen & geokodieren
+    # 1. Ort/Koordinaten Weiche
+    print("👉 Möchtest du nach einem Ort suchen oder direkt GPS-Koordinaten eingeben?")
+    print("  [1] Nach Ort suchen (z.B. 'Hamburg') (Standard)")
+    print("  [2] GPS-Koordinaten manuell eingeben (Latitude / Longitude)")
+    
+    manual_coords = False
     while True:
-        query = wizard_input("👉 Welchen Ort, welche Sehenswürdigkeit oder Adresse willst du zeigen? (z.B. 'Tokyo', 'Elbphilharmonie Hamburg'): ", "query")
-        if not query:
-            print("⚠ Ohne Ort läuft hier gar nix, Diggi! Trag bitte einen Namen ein.")
-            continue
-            
-        try:
-            locations = search_location(query)
-            if not locations:
-                print(f"\n⚠ Fehler: Konnte '{query}' nicht finden! Bitte überprüfe die Eingabe.\n")
+        choice = wizard_input("Wähle eine Option [1-2] (Standard: 1): ", "coord_input_mode")
+        if not choice or choice == '1':
+            manual_coords = False
+            break
+        elif choice == '2':
+            manual_coords = True
+            break
+        print("⚠ Ungültige Auswahl. Bitte wähle 1 oder 2.")
+        
+    if manual_coords:
+        while True:
+            lat_input = wizard_input("👉 Latitude (Breitengrad, z.B. 53.5511): ", "manual_latitude")
+            try:
+                lat = float(lat_input)
+                break
+            except ValueError:
+                print("⚠ Bitte gib eine gültige Zahl für die Latitude ein.")
+        while True:
+            lon_input = wizard_input("👉 Longitude (Längengrad, z.B. 9.9937): ", "manual_longitude")
+            try:
+                lon = float(lon_input)
+                break
+            except ValueError:
+                print("⚠ Bitte gib eine gültige Zahl für die Longitude ein.")
+        coords = (lat, lon)
+        print(f"✓ Manuelle Koordinaten festgelegt: {coords}\n")
+    else:
+        # Ort/Fokuspunkt direkt abfragen & geokodieren
+        while True:
+            query = wizard_input("👉 Welchen Ort, welche Sehenswürdigkeit oder Adresse willst du zeigen? (z.B. 'Tokyo', 'Elbphilharmonie Hamburg'): ", "query")
+            if not query:
+                print("⚠ Ohne Ort läuft hier gar nix, Diggi! Trag bitte einen Namen ein.")
                 continue
                 
-            if len(locations) == 1:
-                selected_loc = locations[0]
-                coords = (selected_loc.latitude, selected_loc.longitude)
-                resolved_address = selected_loc.address
-                print(f"✓ Eindeutig gefunden: {resolved_address}")
-                print(f"✓ Koordinaten: {coords[0]}, {coords[1]}\n")
-                break
-            else:
-                # Multiple matches!
-                print(f"\n🔎 Es wurden {len(locations)} passende Orte gefunden. Welchen meinst du?")
-                top_locations = locations[:5]
-                for idx, loc in enumerate(top_locations, 1):
-                    print(f"  [{idx}] {loc.address}")
-                print("  [0] Keiner davon (Suche verfeinern)")
-                
-                while True:
-                    choice = wizard_input(f"Wähle eine Option [1-{len(top_locations)}] oder 0 (Standard: 1): ", "location_choice")
-                    if not choice:
-                        choice_idx = 1
-                    else:
-                        try:
-                            choice_idx = int(choice)
-                        except ValueError:
-                            print("⚠ Bitte gib eine Zahl ein, Diggi!")
-                            continue
-                            
-                    if choice_idx == 0:
-                        print("\nAlles klar, lass uns die Suche verfeinern.\n")
-                        break  # Breaks inner selection loop, goes back to query input
-                    elif 1 <= choice_idx <= len(top_locations):
-                        selected_loc = top_locations[choice_idx - 1]
-                        coords = (selected_loc.latitude, selected_loc.longitude)
-                        resolved_address = selected_loc.address
-                        print(f"✓ Ausgewählt: {resolved_address}")
-                        print(f"✓ Koordinaten: {coords[0]}, {coords[1]}\n")
-                        break
-                        
-                if choice_idx != 0:
-                    break  # Break outer lookup loop
+            try:
+                locations = search_location(query)
+                if not locations:
+                    print(f"\n⚠ Fehler: Konnte '{query}' nicht finden! Bitte überprüfe die Eingabe.\n")
+                    continue
                     
-        except Exception as e:
-            print(f"\n⚠ Fehler bei der Ortssuche: {e}. Bitte versuche es noch einmal.\n")
+                if len(locations) == 1:
+                    selected_loc = locations[0]
+                    coords = (selected_loc.latitude, selected_loc.longitude)
+                    resolved_address = selected_loc.address
+                    print(f"✓ Eindeutig gefunden: {resolved_address}")
+                    print(f"✓ Koordinaten: {coords[0]}, {coords[1]}\n")
+                    break
+                else:
+                    # Multiple matches!
+                    print(f"\n🔎 Es wurden {len(locations)} passende Orte gefunden. Welchen meinst du?")
+                    top_locations = locations[:5]
+                    for idx, loc in enumerate(top_locations, 1):
+                        print(f"  [{idx}] {loc.address}")
+                    print("  [0] Keiner davon (Suche verfeinern)")
+                    
+                    while True:
+                        choice = wizard_input(f"Wähle eine Option [1-{len(top_locations)}] oder 0 (Standard: 1): ", "location_choice")
+                        if not choice:
+                            choice_idx = 1
+                        else:
+                            try:
+                                choice_idx = int(choice)
+                            except ValueError:
+                                print("⚠ Bitte gib eine Zahl ein, Diggi!")
+                                continue
+                                
+                        if choice_idx == 0:
+                            print("\nAlles klar, lass uns die Suche verfeinern.\n")
+                            break  # Breaks inner selection loop, goes back to query input
+                        elif 1 <= choice_idx <= len(top_locations):
+                            selected_loc = top_locations[choice_idx - 1]
+                            coords = (selected_loc.latitude, selected_loc.longitude)
+                            resolved_address = selected_loc.address
+                            print(f"✓ Ausgewählt: {resolved_address}")
+                            print(f"✓ Koordinaten: {coords[0]}, {coords[1]}\n")
+                            break
+                            
+                    if choice_idx != 0:
+                        break  # Break outer lookup loop
+                        
+            except Exception as e:
+                print(f"\n⚠ Fehler bei der Ortssuche: {e}. Bitte versuche es noch einmal.\n")
 
     # 2. Fokus-Marker abfragen
     print("👉 Möchtest du an diesem Ort einen roten Fokuspunkt-Marker einzeichnen?")
@@ -381,6 +415,91 @@ def run_interactive_wizard(config_path=None):
         print("✓ Washi-Papierstruktur wird angewendet.\n")
     else:
         print("✓ Poster bleibt clean (ohne Textur).\n")
+    # 11. Dateiformat abfragen
+    output_format = 'png'
+    print("\n👉 Welches Dateiformat soll dein Poster haben?")
+    print("  [1] PNG (Hochauflösendes Rasterbild - Standard)")
+    print("  [2] SVG (Vektorgrafik - Perfekt für unendliches Skalieren)")
+    print("  [3] PDF (Druckfertiges Dokument - Ideal für professionellen Druck)")
+    
+    while True:
+        fmt_choice = wizard_input("Wähle eine Option [1-3] (Standard: 1): ", "format")
+        if not fmt_choice or fmt_choice == '1' or fmt_choice.lower() == 'png':
+            output_format = 'png'
+            print("✓ Format festgelegt auf: PNG\n")
+            break
+        elif fmt_choice == '2' or fmt_choice.lower() == 'svg':
+            output_format = 'svg'
+            print("✓ Format festgelegt auf: SVG\n")
+            break
+        elif fmt_choice == '3' or fmt_choice.lower() == 'pdf':
+            output_format = 'pdf'
+            print("✓ Format festgelegt auf: PDF\n")
+            break
+        else:
+            print("⚠ Bitte wähle 1, 2 oder 3 oder gib png, svg, pdf ein.")
+
+    # 12. Google Font Selection
+    font_family = None
+    print("\n👉 Möchtest du eine benutzerdefinierte Google-Schriftart (Google Font) verwenden?")
+    print("  Lass die Eingabe leer, um die Standard-Schriftart des Themes zu nutzen.")
+    font_choice = wizard_input("Gib den Namen der Google-Schriftart ein (z.B. 'Noto Sans JP', 'Montserrat' oder leer lassen): ", "font_family")
+    if font_choice.strip():
+        font_family = font_choice.strip()
+        print(f"✓ Schriftart festgelegt auf: {font_family}\n")
+    else:
+        font_family = None
+        print("✓ Standard-Schriftart des Themes wird verwendet.\n")
+
+    # 13. Custom Poster Dimensions (in Zoll)
+    width = None
+    height = None
+    print("\n👉 Möchtest du benutzerdefinierte Abmessungen für dein Poster festlegen (in Zoll)?")
+    print("  (Lass die Eingaben leer, um das Standard-Seitenverhältnis des Layouts zu verwenden.)")
+    print("  ⚠ Hinweis: Die Breite und Höhe sind aus Stabilitätsgründen auf maximal 20.0 Zoll gedeckelt!")
+    
+    while True:
+        width_choice = wizard_input("Breite in Zoll (z.B. 12.0 oder leer lassen): ", "width")
+        if not width_choice.strip():
+            width = None
+            break
+        try:
+            w_val = float(width_choice)
+            if w_val <= 0:
+                print("⚠ Die Breite muss größer als 0 sein.")
+                continue
+            if w_val > 20.0:
+                print(f"\033[93m⚠ Warnung: {w_val} Zoll überschreitet das Limit! Wir deckeln auf 20.0 Zoll.\033[0m")
+                width = 20.0
+            else:
+                width = w_val
+            break
+        except ValueError:
+            print("⚠ Bitte gib eine gültige Zahl für die Breite ein.")
+            
+    while True:
+        height_choice = wizard_input("Höhe in Zoll (z.B. 18.0 oder leer lassen): ", "height")
+        if not height_choice.strip():
+            height = None
+            break
+        try:
+            h_val = float(height_choice)
+            if h_val <= 0:
+                print("⚠ Die Höhe muss größer als 0 sein.")
+                continue
+            if h_val > 20.0:
+                print(f"\033[93m⚠ Warnung: {h_val} Zoll überschreitet das Limit! Wir deckeln auf 20.0 Zoll.\033[0m")
+                height = 20.0
+            else:
+                height = h_val
+            break
+        except ValueError:
+            print("⚠ Bitte gib eine gültige Zahl für die Höhe ein.")
+            
+    if width is not None or height is not None:
+        print(f"✓ Benutzerdefinierte Maße festgelegt: {width if width is not None else 'Standard'} x {height if height is not None else 'Standard'} Zoll\n")
+    else:
+        print("✓ Standard-Seitenverhältnis des Layouts wird verwendet.\n")
 
     print("\n" + "=" * 50)
     print("Alles klar, Diggi! Hier ist dein Fahrplan:")
@@ -408,6 +527,9 @@ def run_interactive_wizard(config_path=None):
     if custom_note:
         print(f"  📷 Kamera:     {custom_note}")
     print(f"  📝 Papier-Textur: {'Ja (Washi)' if use_paper_texture else 'Nein (Clean)'}")
+    print(f"  💾 Dateiformat:  {output_format.upper()}")
+    print(f"  🔤 Schriftart:   {font_family if font_family else 'Theme-Standard'}")
+    print(f"  📏 Abmessungen:  {f'{width} x {height} Zoll' if (width is not None or height is not None) else 'Standard'}")
     print("=" * 50 + "\n")
     
     confirm = wizard_input("Sollen wir das Poster so generieren? [Y/n]: ", "confirm_generation").lower()
@@ -417,8 +539,8 @@ def run_interactive_wizard(config_path=None):
         
         try:
             region = get_region_from_address(selected_loc)
-            output_file = generate_output_filename(city, theme, layout=layout)
-            create_poster(city, country, coords, distance, output_file, theme=theme_data, focus_point=actual_focus_coords, show_inset=show_inset, inset_position=inset_position, date_str=date_str, time_str=time_str, show_weather=show_weather, layout=layout, no_card_title=no_card_title, region=region, custom_note=custom_note, use_paper_texture=use_paper_texture)
+            output_file = generate_output_filename(city, theme, layout=layout, output_format=output_format)
+            create_poster(city, country, coords, distance, output_file, theme=theme_data, focus_point=actual_focus_coords, show_inset=show_inset, inset_position=inset_position, date_str=date_str, time_str=time_str, show_weather=show_weather, layout=layout, no_card_title=no_card_title, region=region, custom_note=custom_note, use_paper_texture=use_paper_texture, font_family=font_family, width=width, height=height)
             
             print("\n" + "=" * 50)
             print("✓ Poster-Generierung erfolgreich abgeschlossen!")

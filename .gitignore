@@ -2,9 +2,15 @@ cache/*
 env/
 .env/
 posters/*.png
+posters/*.svg
+posters/*.pdf
 .DS_Store
 __pycache__/
 
 # Leica - Proprietary assets
 fonts/Leica-*.ttf
 themes/leica.json
+
+# Cache and local files
+fonts/cache/
+scratch/

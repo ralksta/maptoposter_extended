@@ -8,14 +8,17 @@ import osmnx as ox
 from tqdm import tqdm
 from PIL import Image, ImageChops, ImageEnhance
 from geopy.geocoders import Nominatim
+from shapely.geometry import Point as ShapelyPoint
+from pyproj import Transformer
 
 from maptoposter.theme import get_font_prop
 from maptoposter.geocoding import get_region_from_address
 from maptoposter.weather import parse_date_and_time, fetch_weather_data, GERMAN_MONTHS, WMO_WEATHER_CODES
+from maptoposter.cache import cache_get, cache_set
 
 POSTERS_DIR = "posters"
 
-def generate_output_filename(city, theme_name, layout='portrait'):
+def generate_output_filename(city, theme_name, layout='portrait', output_format='png'):
     """
     Generate unique output filename with city, theme, and datetime.
     """
@@ -26,7 +29,7 @@ def generate_output_filename(city, theme_name, layout='portrait'):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     city_slug = city.lower().replace(' ', '_')
     layout_suffix = f"_{layout}" if layout != 'portrait' else ""
-    filename = f"{city_slug}_{theme_name}{layout_suffix}_{timestamp}.png"
+    filename = f"{city_slug}_{theme_name}{layout_suffix}_{timestamp}.{output_format.lower()}"
     return os.path.join(POSTERS_DIR, filename)
 
 def create_gradient_fade(ax, color, location='bottom', zorder=10):
@@ -125,45 +128,120 @@ def get_edge_widths_by_type(G):
     
     return edge_widths
 
-def create_poster(city, country, point, dist, output_file, theme, focus_point=None, show_inset=False, inset_position='top-left', date_str=None, time_str=None, show_weather=True, layout='portrait', no_card_title=None, region=None, custom_note=None, use_paper_texture=False):
+def is_latin_script(text):
+    """
+    Check if text is primarily Latin script.
+    Used to determine if letter-spacing should be applied to city names.
+
+    :param text: Text to analyze
+    :return: True if text is primarily Latin script, False otherwise
+    """
+    if not text:
+        return True
+
+    latin_count = 0
+    total_alpha = 0
+
+    for char in text:
+        if char.isalpha():
+            total_alpha += 1
+            # Latin Unicode ranges:
+            # - Basic Latin: U+0000 to U+007F
+            # - Latin-1 Supplement: U+0080 to U+00FF
+            # - Latin Extended-A: U+0100 to U+017F
+            # - Latin Extended-B: U+0180 to U+024F
+            if ord(char) < 0x250:
+                latin_count += 1
+
+    # If no alphabetic characters, default to Latin (numbers, symbols, etc.)
+    if total_alpha == 0:
+        return True
+
+    # Consider it Latin if >80% of alphabetic characters are Latin
+    return (latin_count / total_alpha) > 0.8
+
+
+def create_poster(city, country, point, dist, output_file, theme, focus_point=None, show_inset=False, inset_position='top-left', date_str=None, time_str=None, show_weather=True, layout='portrait', no_card_title=None, region=None, custom_note=None, use_paper_texture=False, font_family=None, width=None, height=None):
     print(f"\nGenerating map for {city}, {country}...")
     
-    # Progress bar for data fetching
-    with tqdm(total=3, desc="Fetching map data", unit="step", bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}') as pbar:
-        # 1. Fetch Street Network
-        pbar.set_description("Downloading street network")
-        G = ox.graph_from_point(point, dist=dist, dist_type='bbox', network_type='all')
-        pbar.update(1)
-        time.sleep(0.5)  # Rate limit between requests
-        
-        # 2. Fetch Water Features
-        pbar.set_description("Downloading water features")
-        try:
-            water_tags = {
-                'natural': ['water', 'bay', 'strait'],
-                'waterway': ['riverbank', 'dock', 'canal'],
-                'place': ['sea', 'ocean']
-            }
-            water = ox.features_from_point(point, tags=water_tags, dist=dist)
-            if water is not None and not water.empty:
-                water = water[water.geometry.type.isin(['Polygon', 'MultiPolygon'])]
-        except:
-            water = None
-        pbar.update(1)
-        time.sleep(0.3)
-        
-        # 3. Fetch Parks
-        pbar.set_description("Downloading parks/green spaces")
-        try:
-            parks = ox.features_from_point(point, tags={'leisure': 'park', 'landuse': 'grass'}, dist=dist)
-            if parks is not None and not parks.empty:
-                parks = parks[parks.geometry.type.isin(['Polygon', 'MultiPolygon'])]
-        except:
-            parks = None
-        pbar.update(1)
+    # Caching keys
+    cache_key_g = f"osm_graph_{point[0]:.6f}_{point[1]:.6f}_{dist}"
+    cache_key_water = f"osm_water_{point[0]:.6f}_{point[1]:.6f}_{dist}"
+    cache_key_parks = f"osm_parks_{point[0]:.6f}_{point[1]:.6f}_{dist}"
     
-    print("✓ All data downloaded successfully!")
+    # Check cache first
+    G = cache_get(cache_key_g)
+    water = cache_get(cache_key_water)
+    parks = cache_get(cache_key_parks)
     
+    steps_to_do = 0
+    if G is None: steps_to_do += 1
+    if water is None: steps_to_do += 1
+    if parks is None: steps_to_do += 1
+    
+    if steps_to_do == 0:
+        print("✓ Alle Kartendaten wurden erfolgreich aus dem lokalen Cache geladen! (1-Sekunden-Boost)")
+    else:
+        print(f"Lade {steps_to_do} fehlende Datensätze von der Overpass API...")
+        with tqdm(total=steps_to_do, desc="Fetching map data", unit="step", bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}') as pbar:
+            if G is None:
+                pbar.set_description("Downloading street network")
+                G = ox.graph_from_point(point, dist=dist, dist_type='bbox', network_type='all')
+                cache_set(cache_key_g, G)
+                pbar.update(1)
+                time.sleep(0.5)
+                
+            if water is None:
+                pbar.set_description("Downloading water features")
+                try:
+                    water_tags = {
+                        'natural': ['water', 'bay', 'strait'],
+                        'waterway': ['riverbank', 'dock', 'canal'],
+                        'place': ['sea', 'ocean']
+                    }
+                    water = ox.features_from_point(point, tags=water_tags, dist=dist)
+                    if water is not None and not water.empty:
+                        water = water[water.geometry.type.isin(['Polygon', 'MultiPolygon'])]
+                except Exception as e:
+                    print(f"⚠ Fehler beim Gewässer-Download: {e}")
+                    water = None
+                cache_set(cache_key_water, water)
+                pbar.update(1)
+                time.sleep(0.3)
+                
+            if parks is None:
+                pbar.set_description("Downloading parks/green spaces")
+                try:
+                    parks = ox.features_from_point(point, tags={'leisure': 'park', 'landuse': 'grass'}, dist=dist)
+                    if parks is not None and not parks.empty:
+                        parks = parks[parks.geometry.type.isin(['Polygon', 'MultiPolygon'])]
+                except Exception as e:
+                    print(f"⚠ Fehler beim Park-Download: {e}")
+                    parks = None
+                cache_set(cache_key_parks, parks)
+                pbar.update(1)
+    
+    print("✓ All data loaded successfully!")
+    
+    # 1.5 UTM Projection to avoid map warp and ensure perfectly circular focus points
+    print("Projiziere Karte auf UTM (metrisches System)...")
+    G_proj = ox.project_graph(G)
+    G_crs = G_proj.graph['crs']
+    
+    # Transformer initialisieren und Referenzpunkte in UTM-Meter umrechnen
+    transformer = Transformer.from_crs("epsg:4326", G_crs, always_xy=True)
+    center_x, center_y = transformer.transform(point[1], point[0])
+    
+    focus_proj = None
+    if focus_point is not None:
+        focus_x, focus_y = transformer.transform(focus_point[1], focus_point[0])
+        focus_proj = (focus_x, focus_y)
+    
+    if water is not None and not water.empty:
+        water = water.to_crs(crs=G_crs)
+    if parks is not None and not parks.empty:
+        parks = parks.to_crs(crs=G_crs)
+
     # Determine if we should hide the card title directly on the map
     if no_card_title is None:
         should_hide_card_title = (layout in ['landscape-plaque', 'gallery-plaque'])
@@ -172,10 +250,16 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
 
     # 2. Setup Plot
     print("Rendering map...")
+    default_w, default_h = (12, 16) if layout not in ['landscape-plaque', 'gallery-plaque'] else (16 if layout == 'landscape-plaque' else 15, 10)
+    w = width if width is not None else default_w
+    h = height if height is not None else default_h
+    
+    # Cap both at 20 inches to prevent RAM bloat
+    w = min(float(w), 20.0)
+    h = min(float(h), 20.0)
+    
     if layout in ['landscape-plaque', 'gallery-plaque']:
-        # DM Photo format 10x15cm perfectly matches a 15:10 aspect ratio
-        fig_width = 15 if layout == 'gallery-plaque' else 16
-        fig = plt.figure(figsize=(fig_width, 10), facecolor=theme['bg'])
+        fig = plt.figure(figsize=(w, h), facecolor=theme['bg'])
         # Map-Plot links (aspect ratio layout)
         ax = fig.add_axes([0.04, 0.04, 0.53, 0.92])
         ax.set_facecolor(theme['bg'])
@@ -184,7 +268,7 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
         ax_info.set_facecolor(theme['bg'])
         ax_info.axis('off')
     else:
-        fig, ax = plt.subplots(figsize=(12, 16), facecolor=theme['bg'])
+        fig, ax = plt.subplots(figsize=(w, h), facecolor=theme['bg'])
         ax.set_facecolor(theme['bg'])
         ax.set_position([0, 0, 1, 1])
     
@@ -195,14 +279,14 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
     if parks is not None and not parks.empty:
         parks.plot(ax=ax, facecolor=theme['parks'], edgecolor='none', zorder=2)
     
-    # Layer 2: Roads with hierarchy coloring
+    # Layer 2: Roads with hierarchy coloring (uses UTM projected graph)
     print("Applying road hierarchy colors...")
-    edge_colors = get_edge_colors_by_type(G, theme)
+    edge_colors = get_edge_colors_by_type(G_proj, theme)
     scale = 3.5 if layout == 'gallery-plaque' else 1.0
-    edge_widths = [w * scale for w in get_edge_widths_by_type(G)]
+    edge_widths = [w * scale for w in get_edge_widths_by_type(G_proj)]
     
     ox.plot_graph(
-        G, ax=ax, bgcolor=theme['bg'],
+        G_proj, ax=ax, bgcolor=theme['bg'],
         node_size=0,
         edge_color=edge_colors,
         edge_linewidth=edge_widths,
@@ -218,24 +302,32 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
             spine.set_alpha(0.8)
     
     # Set explicit axis limits to ensure the center coordinates are perfectly in the middle of the poster
-    lat, lon = point
-    # 1 degree of latitude is ~111,111 meters
-    delta_lat = dist / 111111.0
-    # 1 degree of longitude depends on latitude: ~111,111 * cos(latitude) meters
-    delta_lon = dist / (111111.0 * math.cos(math.radians(lat)))
+    # Aspect Ratio dynamically calculated from actual axis coordinates in inches
+    bbox = ax.get_position()
+    fig_w, fig_h = fig.get_size_inches()
+    ax_w_in = bbox.width * fig_w
+    ax_h_in = bbox.height * fig_h
+    ax_aspect = ax_h_in / ax_w_in
     
-    ax.set_xlim(lon - delta_lon, lon + delta_lon)
-    ax.set_ylim(lat - delta_lat, lat + delta_lat)
+    if ax_aspect >= 1.0:
+        half_w = dist
+        half_h = dist * ax_aspect
+    else:
+        half_h = dist
+        half_w = dist / ax_aspect
+        
+    ax.set_xlim(center_x - half_w, center_x + half_w)
+    ax.set_ylim(center_y - half_h, center_y + half_h)
     
     # Layer 2.5: Fokus-Punkt (falls gesetzt)
-    if focus_point is not None:
-        print("Platziere Fokus-Punkt auf der Karte...")
+    if focus_proj is not None:
+        print("Platziere Fokus-Punkt auf der Karte (UTM)...")
         focus_color = theme.get('focus_color', '#E63946')
         focus_size = theme.get('focus_size', 350)
         focus_edge_color = theme.get('focus_edge_color', 'white')
         focus_edge_width = theme.get('focus_edge_width', 2.5)
         
-        ax.scatter(focus_point[1], focus_point[0], 
+        ax.scatter(focus_proj[0], focus_proj[1], 
                    color=focus_color, 
                    s=focus_size * (scale**2), 
                    zorder=9, 
@@ -286,38 +378,71 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
             print(f"⚠ Warning: Zeitstempel konnte nicht verarbeitet werden: {e}")
     
     # 4. Typography using Roboto font or dynamic system fonts/files from theme
+    loaded_custom_fonts = None
+    if font_family:
+        try:
+            from maptoposter.font_management import load_fonts as load_custom_fonts_mgr
+            loaded_custom_fonts = load_custom_fonts_mgr(font_family)
+        except Exception as e:
+            print(f"⚠ Fehler beim Laden der Google-Schriftart '{font_family}': {e}")
+            
     font_title_val = theme.get('font_title')
     font_body_val = theme.get('font_body')
     font_mono_val = theme.get('font_mono')
     
+    if loaded_custom_fonts:
+        font_title_bold = loaded_custom_fonts.get('bold')
+        font_title_reg = loaded_custom_fonts.get('regular')
+        font_title_light = loaded_custom_fonts.get('light')
+        
+        font_body_bold = loaded_custom_fonts.get('bold')
+        font_body_reg = loaded_custom_fonts.get('regular')
+        font_body_light = loaded_custom_fonts.get('light')
+    else:
+        font_title_bold = font_title_val
+        font_title_reg = font_title_val
+        font_title_light = font_title_val
+        
+        font_body_bold = font_body_val
+        font_body_reg = font_body_val
+        font_body_light = font_body_val
+    
     # Calculate dynamic font size and letter spacing for bottom title to avoid truncation
     city_upper = city.upper()
     city_len = len(city_upper)
-    if city_len <= 8:
-        spaced_city = "  ".join(list(city_upper))
-        title_size = int(60 * scale)
-    elif 8 < city_len <= 12:
-        spaced_city = " ".join(list(city_upper))
-        title_size = int(60 * (9.0 / city_len) * scale)
+    
+    if is_latin_script(city_upper):
+        if city_len <= 8:
+            spaced_city = "  ".join(list(city_upper))
+            title_size = int(60 * scale)
+        elif 8 < city_len <= 12:
+            spaced_city = " ".join(list(city_upper))
+            title_size = int(60 * (9.0 / city_len) * scale)
+        else:
+            spaced_city = " ".join(list(city_upper))
+            title_size = int(max(30, 60 * (10.0 / city_len)) * scale)
     else:
-        spaced_city = " ".join(list(city_upper))
-        title_size = int(max(30, 60 * (10.0 / city_len)) * scale)
+        spaced_city = city_upper
+        if city_len <= 5:
+            title_size = int(60 * scale)
+        else:
+            title_size = int(max(30, 60 * (6.0 / city_len)) * scale)
 
-    font_main = get_font_prop(font_title_val, 'sans-serif', weight='bold', size=title_size)
-    font_top = get_font_prop(font_title_val, 'sans-serif', weight='bold', size=int(40 * scale))
-    font_sub = get_font_prop(font_body_val, 'sans-serif', 
+    font_main = get_font_prop(font_title_bold, 'sans-serif', weight='bold', size=title_size)
+    font_top = get_font_prop(font_title_bold, 'sans-serif', weight='bold', size=int(40 * scale))
+    font_sub = get_font_prop(font_body_light if font_body_val in ['Futura', 'Avenir', 'Helvetica Neue'] else font_body_reg, 'sans-serif', 
                             weight='light' if font_body_val in ['Futura', 'Avenir', 'Helvetica Neue'] else 'normal', 
                             size=int(22 * scale))
     font_coords = get_font_prop(font_mono_val, 'monospace', size=int(14 * scale))
     font_attr = get_font_prop(font_mono_val, 'monospace', size=int(8 * scale))
     
     # Info Panel Fonts
-    font_info_title = get_font_prop(font_title_val, 'sans-serif', weight='bold', size=int(32 * scale))
-    font_info_sub = get_font_prop(font_body_val, 'sans-serif', 
+    font_info_title = get_font_prop(font_title_bold, 'sans-serif', weight='bold', size=int(32 * scale))
+    font_info_sub = get_font_prop(font_body_light if font_body_val in ['Futura', 'Avenir', 'Helvetica Neue'] else font_body_reg, 'sans-serif', 
                                   weight='light' if font_body_val in ['Futura', 'Avenir', 'Helvetica Neue'] else 'normal', 
                                   size=int(20 * scale))
-    font_info_label = get_font_prop(font_body_val, 'sans-serif', weight='normal', size=int(13 * scale))
-    font_info_val = get_font_prop(font_title_val, 'sans-serif', weight='bold', size=int(18 * scale))
+    font_info_label = get_font_prop(font_body_reg, 'sans-serif', weight='normal', size=int(13 * scale))
+    font_info_val = get_font_prop(font_title_bold, 'sans-serif', weight='bold', size=int(18 * scale))
     
     # Render Bottom text on Map only if not hidden
     if not should_hide_card_title:
@@ -544,29 +669,32 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
     
     # 6. Apply Paper Texture if requested
     if use_paper_texture:
-        texture_path = os.path.join('assets', 'paper_texture.png')
-        if os.path.exists(texture_path):
-            print("Applying Washi paper texture overlay...")
-            try:
-                base_img = Image.open(output_file).convert("RGBA")
-                texture_img = Image.open(texture_path).convert("RGBA")
-                
-                # Resize texture to match base image exactly
-                texture_resized = texture_img.resize(base_img.size, Image.Resampling.LANCZOS)
-                
-                # Blend using multiply (preserves dark text, texturizes light areas)
-                blended = ImageChops.multiply(base_img, texture_resized)
-                
-                # Restore original brightness to preserve poster luminance (1.2 multiplier)
-                enhancer = ImageEnhance.Brightness(blended)
-                final_img = enhancer.enhance(1.2)
-                
-                # Save the processed image back
-                final_img.save(output_file, format="PNG")
-                print("✓ Paper texture successfully applied!")
-            except Exception as e:
-                print(f"⚠ Warning: Could not apply paper texture: {e}")
+        if not output_file.lower().endswith('.png'):
+            print("⚠ Washi-Papiertextur wird für Vektorformate (SVG/PDF) übersprungen, um die Vektoreigenschaften sauber zu halten.")
         else:
-            print(f"⚠ Warning: Paper texture file not found at {texture_path}. Skipping texture overlay.")
+            texture_path = os.path.join('assets', 'paper_texture.png')
+            if os.path.exists(texture_path):
+                print("Applying Washi paper texture overlay...")
+                try:
+                    base_img = Image.open(output_file).convert("RGBA")
+                    texture_img = Image.open(texture_path).convert("RGBA")
+                    
+                    # Resize texture to match base image exactly
+                    texture_resized = texture_img.resize(base_img.size, Image.Resampling.LANCZOS)
+                    
+                    # Blend using multiply (preserves dark text, texturizes light areas)
+                    blended = ImageChops.multiply(base_img, texture_resized)
+                    
+                    # Restore original brightness to preserve poster luminance (1.2 multiplier)
+                    enhancer = ImageEnhance.Brightness(blended)
+                    final_img = enhancer.enhance(1.2)
+                    
+                    # Save the processed image back
+                    final_img.save(output_file, format="PNG")
+                    print("✓ Paper texture successfully applied!")
+                except Exception as e:
+                    print(f"⚠ Warning: Could not apply paper texture: {e}")
+            else:
+                print(f"⚠ Warning: Paper texture file not found at {texture_path}. Skipping texture overlay.")
 
     print(f"✓ Done! Poster saved as {output_file}")
