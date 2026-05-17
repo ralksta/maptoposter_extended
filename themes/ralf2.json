@@ -12,5 +12,8 @@
   "road_tertiary": "#8E8A85",
   "road_residential": "#B2AEA9",
   "road_default": "#8E8A85",
-  "focus_color": "#B43B3B"
+  "focus_color": "#E2001A",
+  "focus_edge_color": "#111111",
+  "focus_edge_width": 1.5,
+  "focus_size": 400
 }

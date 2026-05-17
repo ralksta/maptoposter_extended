@@ -10,6 +10,7 @@ import json
 import os
 from datetime import datetime
 import argparse
+import requests
 
 THEMES_DIR = "themes"
 FONTS_DIR = "fonts"
@@ -36,7 +37,7 @@ def load_fonts():
 
 FONTS = load_fonts()
 
-def generate_output_filename(city, theme_name):
+def generate_output_filename(city, theme_name, layout='portrait'):
     """
     Generate unique output filename with city, theme, and datetime.
     """
@@ -45,7 +46,8 @@ def generate_output_filename(city, theme_name):
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     city_slug = city.lower().replace(' ', '_')
-    filename = f"{city_slug}_{theme_name}_{timestamp}.png"
+    layout_suffix = f"_{layout}" if layout != 'portrait' else ""
+    filename = f"{city_slug}_{theme_name}{layout_suffix}_{timestamp}.png"
     return os.path.join(POSTERS_DIR, filename)
 
 def get_available_themes():
@@ -206,7 +208,7 @@ def get_coordinates(city, country):
     time.sleep(1)
     
     try:
-        locations = geolocator.geocode(f"{city}, {country}", exactly_one=False, timeout=10, addressdetails=True)
+        locations = geolocator.geocode(f"{city}, {country}", exactly_one=False, timeout=10, addressdetails=True, language='de')
         return locations
     except Exception as e:
         raise RuntimeError(f"API Error during geocoding: {e}")
@@ -223,7 +225,7 @@ def search_location(query):
     time.sleep(1)
     
     try:
-        locations = geolocator.geocode(query, exactly_one=False, timeout=10, addressdetails=True)
+        locations = geolocator.geocode(query, exactly_one=False, timeout=10, addressdetails=True, language='de')
         return locations
     except Exception as e:
         raise RuntimeError(f"API Error during geocoding: {e}")
@@ -253,8 +255,152 @@ def get_country_from_address(location):
     address = location.raw.get('address', {})
     return address.get('country', "")
 
+def get_region_from_address(location):
+    """
+    Extracts the region, state, province or county name from Nominatim addressdetails.
+    """
+    if not location or not hasattr(location, 'raw'):
+        return ""
+    address = location.raw.get('address', {})
+    for key in ['state', 'province', 'region', 'county', 'state_district']:
+        if key in address:
+            return address[key]
+    return ""
 
-def create_poster(city, country, point, dist, output_file, focus_point=None, show_inset=False, inset_position='top-left'):
+# German month names for premium styling
+GERMAN_MONTHS = {
+    1: "JANUAR", 2: "FEBRUAR", 3: "MÄRZ", 4: "APRIL", 
+    5: "MAI", 6: "JUNI", 7: "JULI", 8: "AUGUST", 
+    9: "SEPTEMBER", 10: "OKTOBER", 11: "NOVEMBER", 12: "DEZEMBER"
+}
+
+# WMO Weather Codes to Emojis and Descriptions
+WMO_WEATHER_CODES = {
+    0: "SONNIG",
+    1: "FAST WOLKENLOS",
+    2: "TEILWEISE BEWÖLKT",
+    3: "BEWÖLKT",
+    45: "NEBLIG",
+    48: "NEBLIG RAGEND",
+    51: "LEICHTER NIESELREGEN",
+    53: "NIESELREGEN",
+    55: "STARKER NIESELREGEN",
+    56: "GEFRIERENDER NIESELREGEN",
+    57: "STARKER GEFRIERENDER NIESELREGEN",
+    61: "LEICHTER REGEN",
+    63: "REGEN",
+    65: "STARKER REGEN",
+    66: "LEICHTER GEFRIERENDER REGEN",
+    67: "STARKER GEFRIERENDER REGEN",
+    71: "LEICHTER SCHNEEFALL",
+    73: "SCHNEEFALL",
+    75: "STARKER SCHNEEFALL",
+    77: "SCHNEEGRISEL",
+    80: "LEICHTER REGENSCHAUER",
+    81: "REGENSCHAUER",
+    82: "STARKER REGENSCHAUER",
+    85: "LEICHTER SCHNEESCHAUER",
+    86: "STARKER SCHNEESCHAUER",
+    95: "GEWITTER",
+    96: "GEWITTER MIT LEICHTEM HAGEL",
+    99: "GEWITTER MIT HAGEL",
+}
+
+def parse_date_and_time(date_str, time_str=None):
+    """
+    Parses common German and international date/time formats robustly.
+    Returns (parsed_date, parsed_time) or raises ValueError.
+    """
+    parsed_date = None
+    parsed_time = None
+
+    if date_str:
+        date_str = date_str.strip()
+        # Common formats to try
+        for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%d.%m.%y"):
+            try:
+                parsed_date = datetime.strptime(date_str, fmt)
+                break
+            except ValueError:
+                continue
+        if not parsed_date:
+            raise ValueError(f"Ungültiges Datumsformat: '{date_str}'. Erlaubt sind z.B. 17.05.2026 oder 2026-05-17.")
+
+    if time_str:
+        time_str = time_str.strip().lower()
+        if time_str.endswith("uhr"):
+            time_str = time_str[:-3].strip()
+        # Common formats to try
+        for fmt in ("%H:%M", "%H"):
+            try:
+                parsed_time = datetime.strptime(time_str, fmt).time()
+                break
+            except ValueError:
+                continue
+        if not parsed_time:
+            raise ValueError(f"Ungültiges Uhrzeitformat: '{time_str}'. Erlaubt sind z.B. 18:30 oder 18.")
+
+    return parsed_date, parsed_time
+
+def fetch_weather_data(lat, lon, date_obj, time_obj=None):
+    """
+    Fetches historical weather (archive-api) or forecast (forecast-api)
+    for the given coordinates and date. Returns (temp, weather_code).
+    """
+    date_str = date_obj.strftime("%Y-%m-%d")
+    today = datetime.now().date()
+    
+    # Select correct API based on target date vs today
+    if date_obj.date() < today:
+        api_url = "https://archive-api.open-meteo.com/v1/archive"
+    else:
+        api_url = "https://api.open-meteo.com/v1/forecast"
+        
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "start_date": date_str,
+        "end_date": date_str,
+        "hourly": "temperature_2m,weather_code",
+        "timezone": "auto"
+    }
+    
+    print(f"Abfrage Wetterdaten über Open-Meteo ({'Archiv' if date_obj.date() < today else 'Vorhersage'})...")
+    
+    response = requests.get(api_url, params=params, timeout=10)
+    response.raise_for_status()
+    data = response.json()
+    
+    hourly = data.get("hourly", {})
+    if not hourly or "time" not in hourly:
+        raise ValueError("Keine stündlichen Wetterdaten in der API-Antwort vorhanden.")
+        
+    target_hour = time_obj.hour if time_obj else 12
+    times = hourly["time"]
+    target_index = -1
+    
+    for idx, t_str in enumerate(times):
+        try:
+            dt = datetime.fromisoformat(t_str)
+            if dt.hour == target_hour:
+                target_index = idx
+                break
+        except Exception:
+            continue
+            
+    if target_index == -1 and len(times) > target_hour:
+        target_index = target_hour
+        
+    if target_index == -1 or target_index >= len(hourly["temperature_2m"]):
+        raise ValueError(f"Konnte keinen passenden Datenpunkt für Stunde {target_hour} finden.")
+        
+    temp = hourly["temperature_2m"][target_index]
+    code = hourly["weather_code"][target_index]
+    
+    return temp, code
+
+
+def create_poster(city, country, point, dist, output_file, focus_point=None, show_inset=False, inset_position='top-left', date_str=None, time_str=None, show_weather=True, layout='portrait', no_card_title=None, region=None, custom_note=None):
     print(f"\nGenerating map for {city}, {country}...")
     
     # Progress bar for data fetching
@@ -293,11 +439,29 @@ def create_poster(city, country, point, dist, output_file, focus_point=None, sho
     
     print("✓ All data downloaded successfully!")
     
+    # Determine if we should hide the card title directly on the map
+    if no_card_title is None:
+        should_hide_card_title = (layout in ['landscape-plaque', 'gallery-plaque'])
+    else:
+        should_hide_card_title = no_card_title
+
     # 2. Setup Plot
     print("Rendering map...")
-    fig, ax = plt.subplots(figsize=(12, 16), facecolor=THEME['bg'])
-    ax.set_facecolor(THEME['bg'])
-    ax.set_position([0, 0, 1, 1])
+    if layout in ['landscape-plaque', 'gallery-plaque']:
+        # DM Photo format 10x15cm perfectly matches a 15:10 aspect ratio
+        fig_width = 15 if layout == 'gallery-plaque' else 16
+        fig = plt.figure(figsize=(fig_width, 10), facecolor=THEME['bg'])
+        # Map-Plot links (aspect ratio layout)
+        ax = fig.add_axes([0.04, 0.04, 0.53, 0.92])
+        ax.set_facecolor(THEME['bg'])
+        # Info-Plot rechts
+        ax_info = fig.add_axes([0.61, 0.04, 0.35, 0.92])
+        ax_info.set_facecolor(THEME['bg'])
+        ax_info.axis('off')
+    else:
+        fig, ax = plt.subplots(figsize=(12, 16), facecolor=THEME['bg'])
+        ax.set_facecolor(THEME['bg'])
+        ax.set_position([0, 0, 1, 1])
     
     # 3. Plot Layers
     # Layer 1: Polygons
@@ -309,7 +473,8 @@ def create_poster(city, country, point, dist, output_file, focus_point=None, sho
     # Layer 2: Roads with hierarchy coloring
     print("Applying road hierarchy colors...")
     edge_colors = get_edge_colors_by_type(G)
-    edge_widths = get_edge_widths_by_type(G)
+    scale = 3.5 if layout == 'gallery-plaque' else 1.0
+    edge_widths = [w * scale for w in get_edge_widths_by_type(G)]
     
     ox.plot_graph(
         G, ax=ax, bgcolor=THEME['bg'],
@@ -318,6 +483,14 @@ def create_poster(city, country, point, dist, output_file, focus_point=None, sho
         edge_linewidth=edge_widths,
         show=False, close=False
     )
+    
+    # Ensure map borders are styled for plaque layout
+    if layout in ['landscape-plaque', 'gallery-plaque']:
+        for spine in ax.spines.values():
+            spine.set_visible(True)
+            spine.set_color(THEME['text'])
+            spine.set_linewidth(1.5 * scale)
+            spine.set_alpha(0.8)
     
     # Set explicit axis limits to ensure the center coordinates are perfectly in the middle of the poster
     import math
@@ -334,54 +507,253 @@ def create_poster(city, country, point, dist, output_file, focus_point=None, sho
     if focus_point is not None:
         print("Platziere Fokus-Punkt auf der Karte...")
         focus_color = THEME.get('focus_color', '#E63946')
-        ax.scatter(focus_point[1], focus_point[0], color=focus_color, s=350, zorder=9, edgecolor='white', linewidth=2.5)
+        focus_size = THEME.get('focus_size', 350)
+        focus_edge_color = THEME.get('focus_edge_color', 'white')
+        focus_edge_width = THEME.get('focus_edge_width', 2.5)
+        
+        ax.scatter(focus_point[1], focus_point[0], 
+                   color=focus_color, 
+                   s=focus_size * (scale**2), 
+                   zorder=9, 
+                   edgecolor=focus_edge_color, 
+                   linewidth=focus_edge_width * scale)
     
     # Layer 3: Gradients (Top and Bottom)
     create_gradient_fade(ax, THEME['gradient_color'], location='bottom', zorder=10)
     create_gradient_fade(ax, THEME['gradient_color'], location='top', zorder=10)
     
-    # 4. Typography using Roboto font
-    if FONTS:
-        font_main = FontProperties(fname=FONTS['bold'], size=60)
-        font_top = FontProperties(fname=FONTS['bold'], size=40)
-        font_sub = FontProperties(fname=FONTS['light'], size=22)
-        font_coords = FontProperties(fname=FONTS['regular'], size=14)
-    else:
-        # Fallback to system fonts
-        font_main = FontProperties(family='monospace', weight='bold', size=60)
-        font_top = FontProperties(family='monospace', weight='bold', size=40)
-        font_sub = FontProperties(family='monospace', weight='normal', size=22)
-        font_coords = FontProperties(family='monospace', size=14)
+    # Fetch historical/forecast weather data if date is provided
+    weather_info_str = ""
+    weather_val_str = ""
+    datetime_val_str = ""
+    if date_str:
+        try:
+            parsed_date, parsed_time = parse_date_and_time(date_str, time_str)
+            
+            # Format German premium date string (e.g. 17. MAI 2026)
+            month_idx = parsed_date.month
+            month_name = GERMAN_MONTHS.get(month_idx, parsed_date.strftime("%B").upper())
+            formatted_date = f"{parsed_date.day}. {month_name} {parsed_date.year}"
+            
+            if parsed_time:
+                formatted_time = parsed_time.strftime("%H:%M")
+                datetime_str = f"{formatted_date} / {formatted_time} UHR"
+            else:
+                datetime_str = formatted_date
+            
+            datetime_val_str = datetime_str
+                
+            weather_str = ""
+            if show_weather:
+                try:
+                    temp, code = fetch_weather_data(point[0], point[1], parsed_date, parsed_time)
+                    desc = WMO_WEATHER_CODES.get(code, "WETTER")
+                    weather_str = f"{desc}, {temp:.1f}°C"
+                    weather_val_str = weather_str
+                except Exception as we:
+                    print(f"⚠ Warning: Wetterdaten konnten nicht geladen werden: {we}")
+                    
+            if weather_str:
+                weather_info_str = f"{datetime_str}  •  {weather_str}"
+            else:
+                weather_info_str = datetime_str
+                
+        except Exception as e:
+            print(f"⚠ Warning: Zeitstempel konnte nicht verarbeitet werden: {e}")
     
-    spaced_city = "  ".join(list(city.upper()))
+    # 4. Typography using Roboto font or dynamic system fonts/files from theme
+    font_title_val = THEME.get('font_title')
+    font_body_val = THEME.get('font_body')
+    font_mono_val = THEME.get('font_mono')
+    
+    def get_font_prop(font_val, default_family='sans-serif', **kwargs):
+        if not font_val:
+            # Check if default fonts are available
+            if FONTS:
+                weight = kwargs.get('weight', 'normal')
+                if weight == 'bold':
+                    return FontProperties(fname=FONTS['bold'], size=kwargs.get('size'))
+                elif weight == 'light':
+                    return FontProperties(fname=FONTS['light'], size=kwargs.get('size'))
+                else:
+                    return FontProperties(fname=FONTS['regular'], size=kwargs.get('size'))
+            return FontProperties(family=default_family, **kwargs)
+            
+        # Try to resolve as a local file
+        resolved_path = None
+        if os.path.exists(font_val):
+            resolved_path = font_val
+        elif os.path.exists(os.path.join(FONTS_DIR, font_val)):
+            resolved_path = os.path.join(FONTS_DIR, font_val)
+        elif not font_val.lower().endswith(('.ttf', '.otf')):
+            for ext in ['.ttf', '.otf', '.TTF', '.OTF']:
+                p = os.path.join(FONTS_DIR, font_val + ext)
+                if os.path.exists(p):
+                    resolved_path = p
+                    break
+                p_direct = font_val + ext
+                if os.path.exists(p_direct):
+                    resolved_path = p_direct
+                    break
+                    
+        if resolved_path:
+            return FontProperties(fname=resolved_path, size=kwargs.get('size'))
+        else:
+            return FontProperties(family=font_val, **kwargs)
+            
+    font_main = get_font_prop(font_title_val, 'sans-serif', weight='bold', size=int(60 * scale))
+    font_top = get_font_prop(font_title_val, 'sans-serif', weight='bold', size=int(40 * scale))
+    font_sub = get_font_prop(font_body_val, 'sans-serif', 
+                            weight='light' if font_body_val in ['Futura', 'Avenir', 'Helvetica Neue'] else 'normal', 
+                            size=int(22 * scale))
+    font_coords = get_font_prop(font_mono_val, 'monospace', size=int(14 * scale))
+    font_attr = get_font_prop(font_mono_val, 'monospace', size=int(8 * scale))
+    
+    # Info Panel Fonts
+    font_info_title = get_font_prop(font_title_val, 'sans-serif', weight='bold', size=int(32 * scale))
+    font_info_sub = get_font_prop(font_body_val, 'sans-serif', 
+                                  weight='light' if font_body_val in ['Futura', 'Avenir', 'Helvetica Neue'] else 'normal', 
+                                  size=int(20 * scale))
+    font_info_label = get_font_prop(font_body_val, 'sans-serif', weight='normal', size=int(13 * scale))
+    font_info_val = get_font_prop(font_title_val, 'sans-serif', weight='bold', size=int(18 * scale))
+    font_info_val_reg = get_font_prop(font_body_val, 'sans-serif', weight='normal', size=int(18 * scale))
+    
+    # Render Bottom text on Map only if not hidden
+    if not should_hide_card_title:
+        spaced_city = "  ".join(list(city.upper()))
 
-    # --- BOTTOM TEXT ---
-    ax.text(0.5, 0.14, spaced_city, transform=ax.transAxes,
-            color=THEME['text'], ha='center', fontproperties=font_main, zorder=11)
-    
-    ax.text(0.5, 0.10, country.upper(), transform=ax.transAxes,
-            color=THEME['text'], ha='center', fontproperties=font_sub, zorder=11)
-    
-    lat, lon = point
-    coords = f"{lat:.4f}° N / {lon:.4f}° E" if lat >= 0 else f"{abs(lat):.4f}° S / {lon:.4f}° E"
-    if lon < 0:
-        coords = coords.replace("E", "W")
-    
-    ax.text(0.5, 0.07, coords, transform=ax.transAxes,
-            color=THEME['text'], alpha=0.7, ha='center', fontproperties=font_coords, zorder=11)
-    
-    ax.plot([0.4, 0.6], [0.125, 0.125], transform=ax.transAxes, 
-            color=THEME['text'], linewidth=1, zorder=11)
+        # --- BOTTOM TEXT ---
+        ax.text(0.5, 0.14, spaced_city, transform=ax.transAxes,
+                color=THEME['text'], ha='center', fontproperties=font_main, zorder=11)
+        
+        ax.text(0.5, 0.10, country.upper(), transform=ax.transAxes,
+                color=THEME['text'], ha='center', fontproperties=font_sub, zorder=11)
+        
+        lat, lon = point
+        coords = f"{lat:.4f}° N / {lon:.4f}° E" if lat >= 0 else f"{abs(lat):.4f}° S / {lon:.4f}° E"
+        if lon < 0:
+            coords = coords.replace("E", "W")
+        
+        ax.text(0.5, 0.07, coords, transform=ax.transAxes,
+                color=THEME['text'], alpha=0.7, ha='center', fontproperties=font_coords, zorder=11)
+        
+        if weather_info_str:
+            ax.text(0.5, 0.04, weather_info_str, transform=ax.transAxes,
+                    color=THEME['text'], alpha=0.7, ha='center', fontproperties=font_coords, zorder=11)
+        
+        ax.plot([0.4, 0.6], [0.125, 0.125], transform=ax.transAxes, 
+                color=THEME['text'], linewidth=1, zorder=11)
+        
+        # --- ATTRIBUTION (bottom right) ---
+        ax.text(0.98, 0.02, "© OpenStreetMap contributors", transform=ax.transAxes,
+                color=THEME['text'], alpha=0.5, ha='right', va='bottom', 
+                fontproperties=font_attr, zorder=11)
 
-    # --- ATTRIBUTION (bottom right) ---
-    if FONTS:
-        font_attr = FontProperties(fname=FONTS['light'], size=8)
-    else:
-        font_attr = FontProperties(family='monospace', size=8)
-    
-    ax.text(0.98, 0.02, "© OpenStreetMap contributors", transform=ax.transAxes,
-            color=THEME['text'], alpha=0.5, ha='right', va='bottom', 
-            fontproperties=font_attr, zorder=11)
+    # --- LANDSCAPE PLAQUE INFO PANEL ---
+    if layout in ['landscape-plaque', 'gallery-plaque']:
+        print("Rendering right information column...")
+        
+        # 1. Title section
+        # Dynamic title font size based on length
+        title_text = city.upper()
+        title_len = len(title_text)
+        if title_len > 25:
+            title_size = int(20 * scale)
+        elif title_len > 18:
+            title_size = int(24 * scale)
+        else:
+            title_size = int(32 * scale)
+            
+        font_info_title.set_size(title_size)
+        
+        y_pos = 0.90
+        
+        # Draw City Name
+        ax_info.text(0.0, y_pos, title_text, transform=ax_info.transAxes,
+                     color=THEME['text'], ha='left', va='top', fontproperties=font_info_title, wrap=True)
+        
+        # Height adjustment for city title (if wrapped or long)
+        y_pos -= 0.08
+        if title_len > 18:
+            y_pos -= 0.04
+            
+        # Draw Country Name
+        ax_info.text(0.0, y_pos, country.upper(), transform=ax_info.transAxes,
+                     color=THEME['text'], ha='left', va='top', fontproperties=font_info_sub)
+        
+        y_pos -= 0.05
+        
+        # Draw a beautiful horizontal separator line in theme text color
+        ax_info.plot([0.0, 0.9], [y_pos, y_pos], transform=ax_info.transAxes,
+                     color=THEME['text'], linewidth=1.5 * scale, alpha=0.8)
+        
+        y_pos -= 0.08
+        
+        # 2. Stacked labels
+        # Stack 1: Region / Province
+        if not region:
+            try:
+                geolocator = Nominatim(user_agent="city_map_poster_region")
+                time.sleep(0.5)
+                locs = geolocator.geocode(f"{city}, {country}", addressdetails=True, timeout=10, language='de')
+                if locs:
+                    region = get_region_from_address(locs)
+            except Exception as e:
+                print(f"⚠ Region konnte nicht geholt werden: {e}")
+                
+        if region:
+            ax_info.text(0.0, y_pos, "REGION / PROVINZ", transform=ax_info.transAxes,
+                         color=THEME['text'], alpha=0.6, ha='left', va='top', fontproperties=font_info_label)
+            y_pos -= 0.035
+            ax_info.text(0.0, y_pos, region.upper(), transform=ax_info.transAxes,
+                         color=THEME['text'], ha='left', va='top', fontproperties=font_info_val)
+            y_pos -= 0.075
+            
+        # Stack 2: Zeitstempel / Date
+        if datetime_val_str:
+            ax_info.text(0.0, y_pos, "ZEITPUNKT", transform=ax_info.transAxes,
+                         color=THEME['text'], alpha=0.6, ha='left', va='top', fontproperties=font_info_label)
+            y_pos -= 0.035
+            ax_info.text(0.0, y_pos, datetime_val_str.upper(), transform=ax_info.transAxes,
+                         color=THEME['text'], ha='left', va='top', fontproperties=font_info_val)
+            y_pos -= 0.075
+            
+        # Stack 3: Klima & Wetter
+        if weather_val_str:
+            ax_info.text(0.0, y_pos, "KLIMA & WETTER", transform=ax_info.transAxes,
+                         color=THEME['text'], alpha=0.6, ha='left', va='top', fontproperties=font_info_label)
+            y_pos -= 0.035
+            ax_info.text(0.0, y_pos, weather_val_str.upper(), transform=ax_info.transAxes,
+                         color=THEME['text'], ha='left', va='top', fontproperties=font_info_val)
+            y_pos -= 0.075
+            
+        # Stack 4: Custom Note / Kamera
+        if custom_note:
+            ax_info.text(0.0, y_pos, "KAMERA", transform=ax_info.transAxes,
+                         color=THEME['text'], alpha=0.6, ha='left', va='top', fontproperties=font_info_label)
+            y_pos -= 0.035
+            
+            # Ohne wrap=True, um Darstellungsprobleme (z.B. "blassere" Schrift in manchen Backends) zu vermeiden
+            ax_info.text(0.0, y_pos, custom_note.upper(), transform=ax_info.transAxes,
+                         color=THEME['text'], ha='left', va='top', fontproperties=font_info_val)
+            y_pos -= 0.075
+
+        # Stack 5: Koordinaten / GPS
+        lat, lon = point
+        coords_val_str = f"{lat:.4f}° N / {lon:.4f}° E" if lat >= 0 else f"{abs(lat):.4f}° S / {lon:.4f}° E"
+        if lon < 0:
+            coords_val_str = coords_val_str.replace("E", "W")
+            
+        ax_info.text(0.0, y_pos, "GPS-KOORDINATEN", transform=ax_info.transAxes,
+                     color=THEME['text'], alpha=0.6, ha='left', va='top', fontproperties=font_info_label)
+        y_pos -= 0.035
+        ax_info.text(0.0, y_pos, coords_val_str, transform=ax_info.transAxes,
+                     color=THEME['text'], ha='left', va='top', fontproperties=font_info_val)
+        y_pos -= 0.075
+        
+        # Lower attribution text
+        ax_info.text(0.0, 0.01, "© OpenStreetMap contributors", transform=ax_info.transAxes,
+                     color=THEME['text'], alpha=0.4, ha='left', va='bottom', fontproperties=font_attr)
 
     # Layer 4: Optionale Landeskarte (Inset-Map)
     if show_inset:
@@ -390,21 +762,46 @@ def create_poster(city, country, point, dist, output_file, focus_point=None, sho
             # 1. Geometrie des Landes laden
             gdf_country = ox.geocode_to_gdf(country)
             if gdf_country is not None and not gdf_country.empty:
-                # 2. Position des Insets bestimmen basierend auf inset_position
-                # Das Poster hat das Verhältnis 12:16 (W:H) -> height = width * 12 / 16 = width * 0.75
-                width = 0.16
-                height = width * 0.75  # 0.12
-                
-                if inset_position == 'top-left':
-                    left, bottom = 0.05, 0.83
-                elif inset_position == 'top-right':
-                    left, bottom = 0.79, 0.83
-                elif inset_position == 'bottom-left':
-                    left, bottom = 0.05, 0.22
-                elif inset_position == 'bottom-right':
-                    left, bottom = 0.79, 0.22
+                minx, miny, maxx, maxy = gdf_country.total_bounds
+                data_w = maxx - minx
+                data_h = maxy - miny
+                aspect = data_h / data_w if data_w > 0 else 1.0
+
+                # 2. Position des Insets bestimmen basierend auf inset_position und layout
+                if layout in ['landscape-plaque', 'gallery-plaque']:
+                    fig_w = 15 if layout == 'gallery-plaque' else 16
+                    width = 0.11
+                    height = (width * fig_w * aspect) / 10.0
+                    
+                    # The map area is [0.04, 0.04, 0.53, 0.92]
+                    map_left, map_top = 0.04, 0.96
+                    map_right, map_bottom = 0.57, 0.04
+                    
+                    # Gleichmäßiger Abstand zum Kartenrand (nicht zum Bildrand)
+                    margin_x = 0.015 
+                    margin_y = margin_x * (fig_w / 10.0)
+                    
+                    if inset_position == 'top-left':
+                        left, bottom = map_left + margin_x, map_top - margin_y - height
+                    elif inset_position == 'top-right':
+                        left, bottom = map_right - margin_x - width, map_top - margin_y - height
+                    elif inset_position == 'bottom-left':
+                        left, bottom = map_left + margin_x, map_bottom + margin_y
+                    elif inset_position == 'bottom-right':
+                        left, bottom = map_right - margin_x - width, map_bottom + margin_y
                 else:
-                    left, bottom = 0.05, 0.83  # Fallback
+                    width = 0.16
+                    height = (width * 12 * aspect) / 16.0  # perfectly square for 12:16 figure
+                    if inset_position == 'top-left':
+                        left, bottom = 0.05, 0.95 - height
+                    elif inset_position == 'top-right':
+                        left, bottom = 0.95 - width, 0.95 - height
+                    elif inset_position == 'bottom-left':
+                        left, bottom = 0.05, 0.05
+                    elif inset_position == 'bottom-right':
+                        left, bottom = 0.95 - width, 0.05
+                    else:
+                        left, bottom = 0.05, 0.95 - height  # Fallback
                 
                 # 3. Neue Achse hinzufügen
                 inset_ax = fig.add_axes([left, bottom, width, height], facecolor=THEME['water'])
@@ -415,10 +812,15 @@ def create_poster(city, country, point, dist, output_file, focus_point=None, sho
                 border_color = THEME['text']
                 gdf_country.plot(ax=inset_ax, facecolor=land_color, edgecolor=border_color, linewidth=0.5)
                 
+                # Exakte Anpassung auf die Bounding-Box, um interne Ränder zu eliminieren
+                inset_ax.set_xlim(minx, maxx)
+                inset_ax.set_ylim(miny, maxy)
+                inset_ax.set_axis_off()
+                
                 # 5. Fokuspunkt/Kartenzentrum als roten Punkt einzeichnen
                 lat, lon = point
                 focus_color = THEME.get('focus_color', '#B43B3B')
-                inset_ax.scatter(lon, lat, color=focus_color, s=40, zorder=5, edgecolor='white', linewidth=1)
+                inset_ax.scatter(lon, lat, color=focus_color, s=40 * (scale**2), zorder=5, edgecolor='white', linewidth=1 * scale)
                 
                 # 6. Achsen & Spines designen
                 inset_ax.set_xticks([])
@@ -427,7 +829,7 @@ def create_poster(city, country, point, dist, output_file, focus_point=None, sho
                 # Edler dünner Rahmen in Textfarbe
                 for spine in inset_ax.spines.values():
                     spine.set_color(THEME['text'])
-                    spine.set_linewidth(0.8)
+                    spine.set_linewidth(0.8 * scale)
                     spine.set_alpha(0.8)
                     
                 print("✓ Landeskarte (Inset) erfolgreich hinzugefügt!")
@@ -521,15 +923,39 @@ def list_themes():
             print(f"    {description}")
         print()
 
-def run_interactive_wizard():
+def run_interactive_wizard(config_path=None):
     """
     Runs an interactive CLI wizard to gather parameters and generate a poster.
+    Supports prepopulating and skipping questions via a config file.
     """
     print("\n" + "=" * 60)
     print("⚓️  Moin Moin! Willkommen beim City Map Poster Generator Wizard!  ⚓️")
     print("=" * 60)
     print("Lass uns zusammen ein fettes Map-Poster basteln. Trag einfach die Infos ein.\n")
     
+    config = {}
+    if config_path and os.path.exists(config_path):
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+            print(f"✓ Config '{config_path}' geladen.")
+        except Exception as e:
+            print(f"⚠ Fehler beim Laden der Config: {e}")
+
+    final_config = {}
+
+    def wizard_input(prompt, key):
+        if key in config:
+            val = str(config[key])
+            print(f"{prompt}{val}  (Aus Config)")
+            del config[key]
+            final_config[key] = val
+            return val
+        
+        val = input(prompt).strip()
+        final_config[key] = val
+        return val
+
     coords = None
     actual_focus_coords = None
     city = ""
@@ -538,7 +964,7 @@ def run_interactive_wizard():
     
     # 1. Ort/Fokuspunkt direkt abfragen & geokodieren
     while True:
-        query = input("👉 Welchen Ort, welche Sehenswürdigkeit oder Adresse willst du zeigen? (z.B. 'Tokyo', 'Elbphilharmonie Hamburg'): ").strip()
+        query = wizard_input("👉 Welchen Ort, welche Sehenswürdigkeit oder Adresse willst du zeigen? (z.B. 'Tokyo', 'Elbphilharmonie Hamburg'): ", "query")
         if not query:
             print("⚠ Ohne Ort läuft hier gar nix, Diggi! Trag bitte einen Namen ein.")
             continue
@@ -565,7 +991,7 @@ def run_interactive_wizard():
                 print("  [0] Keiner davon (Suche verfeinern)")
                 
                 while True:
-                    choice = input(f"Wähle eine Option [1-{len(top_locations)}] oder 0 (Standard: 1): ").strip()
+                    choice = wizard_input(f"Wähle eine Option [1-{len(top_locations)}] oder 0 (Standard: 1): ", "location_choice")
                     if not choice:
                         choice_idx = 1
                     else:
@@ -598,7 +1024,7 @@ def run_interactive_wizard():
     print("  [2] Ja, roten Fokuspunkt-Marker auf den Koordinaten platzieren")
     
     while True:
-        choice = input("Wähle eine Option [1-2] (Standard: 1): ").strip()
+        choice = wizard_input("Wähle eine Option [1-2] (Standard: 1): ", "focus_choice")
         if not choice or choice == '1':
             actual_focus_coords = None
             print("✓ Karte wird zentriert, nackt ohne roten Marker gezeichnet.\n")
@@ -617,7 +1043,7 @@ def run_interactive_wizard():
     
     while True:
         city_prompt = f"👉 Haupttitel für das Poster (Standard: {detected_city}): " if detected_city else "👉 Haupttitel für das Poster (z.B. Hamburg): "
-        city_input = input(city_prompt).strip()
+        city_input = wizard_input(city_prompt, "city")
         if not city_input:
             city = detected_city
         else:
@@ -627,7 +1053,7 @@ def run_interactive_wizard():
         print("⚠ Ein Haupttitel wird benötigt, Diggi!")
         
     country_prompt = f"👉 Untertitel für das Poster (Standard: {detected_country}): " if detected_country else "👉 Untertitel für das Poster (z.B. Germany): "
-    country_input = input(country_prompt).strip()
+    country_input = wizard_input(country_prompt, "country")
     if not country_input:
         country = detected_country
     else:
@@ -657,7 +1083,7 @@ def run_interactive_wizard():
         default_theme = available_themes[default_theme_idx - 1]
         
         while True:
-            choice = input(f"Wähle eine Nummer [1-{len(available_themes)}] (Standard: {default_theme_idx} -> {default_theme}): ").strip()
+            choice = wizard_input(f"Wähle eine Nummer [1-{len(available_themes)}] (Standard: {default_theme_idx} -> {default_theme}): ", "theme_choice")
             if not choice:
                 theme = default_theme
                 break
@@ -687,7 +1113,7 @@ def run_interactive_wizard():
     print("  [4] Custom / Selber in Metern eingeben")
     
     while True:
-        dist_choice = input("Wähle eine Option [1-4] (Standard: 2 -> 10000m): ").strip()
+        dist_choice = wizard_input("Wähle eine Option [1-4] (Standard: 2 -> 10000m): ", "dist_choice")
         if not dist_choice:
             distance = 10000
             break
@@ -702,7 +1128,7 @@ def run_interactive_wizard():
             break
         elif dist_choice == '4':
             while True:
-                custom_dist = input("Gib den Radius in Metern ein (z.B. 12000): ").strip()
+                custom_dist = wizard_input("Gib den Radius in Metern ein (z.B. 12000): ", "custom_distance")
                 try:
                     distance = int(custom_dist)
                     if distance > 0:
@@ -723,7 +1149,7 @@ def run_interactive_wizard():
     print("  [2] Ja, Übersichtskarte anzeigen")
     
     while True:
-        choice = input("Wähle eine Option [1-2] (Standard: 1): ").strip()
+        choice = wizard_input("Wähle eine Option [1-2] (Standard: 1): ", "inset_choice")
         if not choice or choice == '1':
             show_inset = False
             print("✓ Keine Übersichtskarte auf dem Poster.\n")
@@ -739,7 +1165,7 @@ def run_interactive_wizard():
             print("  [4] Unten Rechts (Über dem Text)")
             
             while True:
-                pos_choice = input("Wähle eine Option [1-4] (Standard: 1): ").strip()
+                pos_choice = wizard_input("Wähle eine Option [1-4] (Standard: 1): ", "inset_position")
                 if not pos_choice or pos_choice == '1':
                     inset_position = 'top-left'
                     break
@@ -759,6 +1185,109 @@ def run_interactive_wizard():
             break
         print("⚠ Ungültige Auswahl. Bitte wähle 1 oder 2.")
 
+    # 7. Wetter & Zeitstempel abfragen
+    date_str = None
+    time_str = None
+    show_weather = True
+
+    print("\n👉 Möchtest du einen Zeitstempel und Wetterinfos auf dem Poster anzeigen?")
+    print("  [1] Nein (Standard)")
+    print("  [2] Ja, Datum/Uhrzeit eingeben und Wetterdaten laden")
+
+    while True:
+        choice = wizard_input("Wähle eine Option [1-2] (Standard: 1): ", "weather_time_choice")
+        if not choice or choice == '1':
+            date_str = None
+            time_str = None
+            show_weather = False
+            print("✓ Kein Zeitstempel und keine Wetterdaten auf dem Poster.\n")
+            break
+        if choice == '2':
+            # Ask for date
+            while True:
+                d_input = wizard_input("👉 Datum eingeben (z.B. '17.05.2026' oder '2026-05-17'): ", "date_str")
+                if not d_input:
+                    print("⚠ Ein Datum wird benötigt für den Zeitstempel, Diggi!")
+                    continue
+                try:
+                    parse_date_and_time(d_input, None)
+                    date_str = d_input
+                    break
+                except ValueError as ve:
+                    print(f"⚠ {ve} Bitte versuche es noch einmal.")
+            
+            # Ask for time
+            t_input = wizard_input("👉 Uhrzeit optional eingeben (z.B. '18:30', '18 Uhr' oder leer lassen für Mittagszeit): ", "time_str")
+            if t_input:
+                while True:
+                    try:
+                        parse_date_and_time(date_str, t_input)
+                        time_str = t_input
+                        break
+                    except ValueError as ve:
+                        print(f"⚠ {ve} Bitte versuche es noch einmal.")
+                        t_input = wizard_input("👉 Uhrzeit optional eingeben: ", "time_str")
+                        if not t_input:
+                            break
+
+            # Ask for weather
+            weather_choice = wizard_input("👉 Wetterinfos (Temperatur & Bewölkung) laden und anzeigen? [Y/n] (Standard: Y): ", "show_weather_choice").lower()
+            if weather_choice in ['', 'y', 'yes', 'ja']:
+                show_weather = True
+                print("✓ Wetterdaten werden von Open-Meteo geladen!")
+            else:
+                show_weather = False
+                print("✓ Nur Zeitstempel wird angezeigt (ohne Wetter).")
+            print()
+            break
+        print("⚠ Ungültige Auswahl. Bitte wähle 1 oder 2.")
+
+    # 8. Layout-Format abfragen
+    layout = 'portrait'
+    no_card_title = None
+
+    print("\n👉 Welches Layout-Format soll dein Poster haben?")
+    print("  [1] Hochformat / Classic Portrait (Standard - ideal für die Wand)")
+    print("  [2] Querformat / Galerie-Infoplakette (Schickes 16:10 Format mit Infotext rechts)")
+    
+    while True:
+        choice = wizard_input("Wähle eine Option [1-2] (Standard: 1): ", "layout_choice")
+        if not choice or choice == '1':
+            layout = 'portrait'
+            print("✓ Layout festgelegt auf: Classic Portrait (Hochformat)\n")
+            break
+        if choice == '2':
+            layout = 'landscape-plaque'
+            print("✓ Layout festgelegt auf: Galerie-Infoplakette (Querformat)\n")
+            
+            # Bei der Plakette nach dem Titel auf der Karte fragen
+            print("👉 Möchtest du bei der Plakette zusätzlich einen Titel direkt auf der Karte einzeichnen?")
+            print("  [1] Nein, Karte clean halten (Standard - empfohlen)")
+            print("  [2] Ja, Titel auch auf der Karte anzeigen")
+            while True:
+                title_choice = wizard_input("Wähle eine Option [1-2] (Standard: 1): ", "title_choice")
+                if not title_choice or title_choice == '1':
+                    no_card_title = True
+                    print("✓ Karte bleibt clean ohne Titel.\n")
+                    break
+                elif title_choice == '2':
+                    no_card_title = False
+                    print("✓ Titel wird auch auf der Karte gezeichnet.\n")
+                    break
+                else:
+                    print("⚠ Bitte wähle 1 oder 2.")
+            break
+        print("⚠ Bitte wähle 1 oder 2.")
+
+    # 9. Custom Note
+    custom_note = None
+    if layout in ['landscape-plaque', 'gallery-plaque']:
+        print("\n👉 Möchtest du Kamera-Details (Freitext) hinzufügen? (Optional)")
+        note_input = wizard_input("Gib deine Kamera-Details ein (leer lassen für keine Angabe): ", "custom_note")
+        if note_input.strip():
+            custom_note = note_input
+            print("✓ Kamera-Details hinzugefügt.")
+
     print("\n" + "=" * 50)
     print("Alles klar, Diggi! Hier ist dein Fahrplan:")
     print(f"  📍 Haupttitel: {city}")
@@ -773,22 +1302,51 @@ def run_interactive_wizard():
         print(f"  🗺 Landeskarte: Ja (Position: {inset_position})")
     else:
         print("  🗺 Landeskarte: Nein")
+    if date_str:
+        t_str = f" um {time_str}" if time_str else ""
+        w_str = " (mit Wetter)" if show_weather else " (ohne Wetter)"
+        print(f"  📅 Zeitstempel: {date_str}{t_str}{w_str}")
+    else:
+        print("  📅 Zeitstempel: Nein")
+    print(f"  📐 Layout:     {'Classic Portrait (Hochformat)' if layout == 'portrait' else 'Galerie-Infoplakette (Querformat)'}")
+    if layout == 'landscape-plaque':
+        print(f"  📛 Kartentitel: {'Clean (Ausgeblendet)' if no_card_title else 'Anzeigen'}")
+    if custom_note:
+        print(f"  📷 Kamera:     {custom_note}")
     print("=" * 50 + "\n")
     
-    confirm = input("Sollen wir das Poster so generieren? [Y/n]: ").strip().lower()
+    confirm = wizard_input("Sollen wir das Poster so generieren? [Y/n]: ", "confirm_generation").lower()
     if confirm in ['', 'y', 'yes', 'ja']:
         # Load theme
         global THEME
         THEME = load_theme(theme)
         
         try:
-            output_file = generate_output_filename(city, theme)
-            create_poster(city, country, coords, distance, output_file, focus_point=actual_focus_coords, show_inset=show_inset, inset_position=inset_position)
+            region = get_region_from_address(selected_loc)
+            output_file = generate_output_filename(city, theme, layout=layout)
+            create_poster(city, country, coords, distance, output_file, focus_point=actual_focus_coords, show_inset=show_inset, inset_position=inset_position, date_str=date_str, time_str=time_str, show_weather=show_weather, layout=layout, no_card_title=no_card_title, region=region, custom_note=custom_note)
             
             print("\n" + "=" * 50)
             print("✓ Poster-Generierung erfolgreich abgeschlossen!")
             print(f"Dein Kunstwerk liegt bereit unter: {output_file}")
             print("=" * 50)
+            
+            save_name = wizard_input("\n👉 Möchtest du diese Konfiguration speichern? [Name/n] (Standard: n): ", "save_config_name")
+            if save_name and save_name.lower() != 'n':
+                if not save_name.endswith('.json'):
+                    save_name += '.json'
+                
+                # Make sure the configs directory exists
+                os.makedirs("configs", exist_ok=True)
+                save_path = os.path.join("configs", save_name)
+                
+                # Filter out the confirm and save_config_name keys
+                cfg_to_save = {k: v for k, v in final_config.items() if k not in ['confirm_generation', 'save_config_name']}
+                
+                with open(save_path, 'w', encoding='utf-8') as f:
+                    json.dump(cfg_to_save, f, indent=4, ensure_ascii=False)
+                print(f"✓ Konfiguration gespeichert als '{save_path}'")
+            
             
         except Exception as e:
             print(f"\n✗ Fehler bei der Generierung: {e}")
@@ -822,12 +1380,20 @@ Examples:
     parser.add_argument('--select-first', '-y', action='store_true', help='Force using the first match if city name is ambiguous')
     parser.add_argument('--show-inset', '-i', action='store_true', help='Show country locator/inset map in one of the corners')
     parser.add_argument('--inset-position', '-ip', type=str, default='top-left', choices=['top-left', 'top-right', 'bottom-left', 'bottom-right'], help='Position of the country inset map (default: top-left)')
+    parser.add_argument('--date', '-dt', type=str, help='Date for weather and timestamp (e.g. 17.05.2026 or 2026-05-17)')
+    parser.add_argument('--time', '-tm', type=str, help='Optional time for weather and timestamp (e.g. 18:30 or 18)')
+    parser.add_argument('--no-weather', action='store_true', help='Disable fetching and showing weather data (only show timestamp)')
+    parser.add_argument('--layout', '-l', type=str, default='portrait', choices=['portrait', 'landscape-plaque', 'gallery-plaque'], help='Layout format (default: portrait)')
+    parser.add_argument('--no-card-title', action='store_true', default=None, help='Hide the title directly on the map (default for landscape-plaque and gallery-plaque)')
+    parser.add_argument('--custom-note', type=str, default=None, help='Custom note to display on plaque layouts')
+    parser.add_argument('--show-card-title', action='store_true', default=None, help='Explicitly show the title directly on the map')
+    parser.add_argument('--config', type=str, help='Path to a JSON configuration file to prepopulate wizard inputs')
     
     args = parser.parse_args()
     
     # If no arguments provided or --wizard flag is used, run the wizard
-    if len(os.sys.argv) == 1 or args.wizard:
-        run_interactive_wizard()
+    if len(os.sys.argv) == 1 or args.wizard or args.config:
+        run_interactive_wizard(config_path=args.config)
         os.sys.exit(0)
     
     # List themes if requested
@@ -879,15 +1445,18 @@ Examples:
             print(f"Error: Konnte keine Koordinaten für '{args.city}, {args.country}' finden! Bitte überprüfe die Schreibweise.")
             os.sys.exit(1)
             
+        region = None
         if len(locations) == 1:
             coords = (locations[0].latitude, locations[0].longitude)
             print(f"✓ Ort eindeutig gefunden: {locations[0].address}")
+            region = get_region_from_address(locations[0])
         else:
             # Ambiguity!
             if args.select_first:
                 coords = (locations[0].latitude, locations[0].longitude)
                 print(f"\033[93m⚠ Warnung: Mehrere Treffer für '{args.city}, {args.country}' gefunden!\033[0m")
                 print(f"\033[93m  Wir verwenden den ersten Treffer: {locations[0].address}\033[0m")
+                region = get_region_from_address(locations[0])
             else:
                 print(f"\n✗ Error: Der Ort '{args.city}, {args.country}' ist nicht eindeutig! Es wurden {len(locations)} Übereinstimmungen gefunden:")
                 top_locations = locations[:5]
@@ -896,7 +1465,14 @@ Examples:
                 print("\n💡 Tipp: Nutze den interaktiven Wizard (ohne Parameter oder mit -w) oder übergib '-y' / '--select-first', um den ersten Treffer zu erzwingen.")
                 os.sys.exit(1)
                 
-        output_file = generate_output_filename(args.city, args.theme)
+        # Resolve no-card-title value
+        no_card_title_val = None
+        if args.no_card_title:
+            no_card_title_val = True
+        elif args.show_card_title:
+            no_card_title_val = False
+            
+        output_file = generate_output_filename(args.city, args.theme, layout=args.layout)
         
         # Determine center coords
         if args.center_on_focus:
@@ -905,7 +1481,7 @@ Examples:
         else:
             center_coords = coords
             
-        create_poster(args.city, args.country, center_coords, args.distance, output_file, focus_point=focus_coords, show_inset=args.show_inset, inset_position=args.inset_position)
+        create_poster(args.city, args.country, center_coords, args.distance, output_file, focus_point=focus_coords, show_inset=args.show_inset, inset_position=args.inset_position, date_str=args.date, time_str=args.time, show_weather=not args.no_weather, layout=args.layout, no_card_title=no_card_title_val, region=region, custom_note=args.custom_note)
         
         print("\n" + "=" * 50)
         print("✓ Poster generation complete!")

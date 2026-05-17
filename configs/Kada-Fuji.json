@@ -1,0 +1,18 @@
+{
+    "query": "34.2748, 135.0668",
+    "focus_choice": "2",
+    "city": "Kada",
+    "country": "Japan",
+    "theme_choice": "ralf2",
+    "dist_choice": "4",
+    "custom_distance": "10000",
+    "inset_choice": "2",
+    "inset_position": "1",
+    "weather_time_choice": "2",
+    "date_str": "17.10.2023",
+    "time_str": "13:10",
+    "show_weather_choice": "y",
+    "layout_choice": "2",
+    "title_choice": "1",
+    "custom_note": "FUJIFILM X-H2 1/2700 s ISO 500"
+}
