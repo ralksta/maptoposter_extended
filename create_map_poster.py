@@ -11,6 +11,7 @@ import os
 from datetime import datetime
 import argparse
 import requests
+from PIL import Image, ImageChops, ImageEnhance
 
 THEMES_DIR = "themes"
 FONTS_DIR = "fonts"
@@ -400,7 +401,7 @@ def fetch_weather_data(lat, lon, date_obj, time_obj=None):
     return temp, code
 
 
-def create_poster(city, country, point, dist, output_file, focus_point=None, show_inset=False, inset_position='top-left', date_str=None, time_str=None, show_weather=True, layout='portrait', no_card_title=None, region=None, custom_note=None):
+def create_poster(city, country, point, dist, output_file, focus_point=None, show_inset=False, inset_position='top-left', date_str=None, time_str=None, show_weather=True, layout='portrait', no_card_title=None, region=None, custom_note=None, use_paper_texture=False):
     print(f"\nGenerating map for {city}, {country}...")
     
     # Progress bar for data fetching
@@ -840,6 +841,34 @@ def create_poster(city, country, point, dist, output_file, focus_point=None, sho
     print(f"Saving to {output_file}...")
     plt.savefig(output_file, dpi=300, facecolor=THEME['bg'])
     plt.close()
+    
+    # 6. Apply Paper Texture if requested
+    if use_paper_texture:
+        texture_path = os.path.join('assets', 'paper_texture.png')
+        if os.path.exists(texture_path):
+            print("Applying Washi paper texture overlay...")
+            try:
+                base_img = Image.open(output_file).convert("RGBA")
+                texture_img = Image.open(texture_path).convert("RGBA")
+                
+                # Resize texture to match base image exactly
+                texture_resized = texture_img.resize(base_img.size, Image.Resampling.LANCZOS)
+                
+                # Blend using multiply (preserves dark text, texturizes light areas)
+                blended = ImageChops.multiply(base_img, texture_resized)
+                
+                # Restore original brightness to preserve poster luminance (1.2 multiplier)
+                enhancer = ImageEnhance.Brightness(blended)
+                final_img = enhancer.enhance(1.2)
+                
+                # Save the processed image back
+                final_img.save(output_file, format="PNG")
+                print("✓ Paper texture successfully applied!")
+            except Exception as e:
+                print(f"⚠ Warning: Could not apply paper texture: {e}")
+        else:
+            print(f"⚠ Warning: Paper texture file not found at {texture_path}. Skipping texture overlay.")
+
     print(f"✓ Done! Poster saved as {output_file}")
 
 def print_examples():
@@ -1287,6 +1316,15 @@ def run_interactive_wizard(config_path=None):
         if note_input.strip():
             custom_note = note_input
             print("✓ Kamera-Details hinzugefügt.")
+    # 10. Paper Texture
+    use_paper_texture = False
+    print("\n👉 Möchtest du eine feine japanische Washi-Papierstruktur über das Poster legen?")
+    texture_choice = wizard_input("Texture anwenden? [y/N] (Standard: N): ", "use_paper_texture").lower()
+    if texture_choice in ['y', 'yes', 'ja', 'true', '1']:
+        use_paper_texture = True
+        print("✓ Washi-Papierstruktur wird angewendet.\n")
+    else:
+        print("✓ Poster bleibt clean (ohne Textur).\n")
 
     print("\n" + "=" * 50)
     print("Alles klar, Diggi! Hier ist dein Fahrplan:")
@@ -1313,6 +1351,7 @@ def run_interactive_wizard(config_path=None):
         print(f"  📛 Kartentitel: {'Clean (Ausgeblendet)' if no_card_title else 'Anzeigen'}")
     if custom_note:
         print(f"  📷 Kamera:     {custom_note}")
+    print(f"  📝 Papier-Textur: {'Ja (Washi)' if use_paper_texture else 'Nein (Clean)'}")
     print("=" * 50 + "\n")
     
     confirm = wizard_input("Sollen wir das Poster so generieren? [Y/n]: ", "confirm_generation").lower()
@@ -1324,7 +1363,7 @@ def run_interactive_wizard(config_path=None):
         try:
             region = get_region_from_address(selected_loc)
             output_file = generate_output_filename(city, theme, layout=layout)
-            create_poster(city, country, coords, distance, output_file, focus_point=actual_focus_coords, show_inset=show_inset, inset_position=inset_position, date_str=date_str, time_str=time_str, show_weather=show_weather, layout=layout, no_card_title=no_card_title, region=region, custom_note=custom_note)
+            create_poster(city, country, coords, distance, output_file, focus_point=actual_focus_coords, show_inset=show_inset, inset_position=inset_position, date_str=date_str, time_str=time_str, show_weather=show_weather, layout=layout, no_card_title=no_card_title, region=region, custom_note=custom_note, use_paper_texture=use_paper_texture)
             
             print("\n" + "=" * 50)
             print("✓ Poster-Generierung erfolgreich abgeschlossen!")
@@ -1387,6 +1426,7 @@ Examples:
     parser.add_argument('--no-card-title', action='store_true', default=None, help='Hide the title directly on the map (default for landscape-plaque and gallery-plaque)')
     parser.add_argument('--custom-note', type=str, default=None, help='Custom note to display on plaque layouts')
     parser.add_argument('--show-card-title', action='store_true', default=None, help='Explicitly show the title directly on the map')
+    parser.add_argument('--paper-texture', action='store_true', help='Apply a subtle Japanese Washi paper texture overlay to the final poster')
     parser.add_argument('--config', type=str, help='Path to a JSON configuration file to prepopulate wizard inputs')
     
     args = parser.parse_args()
@@ -1481,7 +1521,7 @@ Examples:
         else:
             center_coords = coords
             
-        create_poster(args.city, args.country, center_coords, args.distance, output_file, focus_point=focus_coords, show_inset=args.show_inset, inset_position=args.inset_position, date_str=args.date, time_str=args.time, show_weather=not args.no_weather, layout=args.layout, no_card_title=no_card_title_val, region=region, custom_note=args.custom_note)
+        create_poster(args.city, args.country, center_coords, args.distance, output_file, focus_point=focus_coords, show_inset=args.show_inset, inset_position=args.inset_position, date_str=args.date, time_str=args.time, show_weather=not args.no_weather, layout=args.layout, no_card_title=no_card_title_val, region=region, custom_note=args.custom_note, use_paper_texture=args.paper_texture)
         
         print("\n" + "=" * 50)
         print("✓ Poster generation complete!")

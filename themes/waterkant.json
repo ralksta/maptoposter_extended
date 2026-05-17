@@ -1,0 +1,19 @@
+{
+  "name": "Waterkant",
+  "description": "Premium-Theme auf Basis von 'Ralf2' mit elegantem, schickem Schieferblau für reichhaltigere Gewässer und weicheren, stahlblauen Straßen für ein harmonisches Druck-Finish.",
+  "bg": "#FAF8F5",
+  "text": "#1D262F",
+  "gradient_color": "#FAF8F5",
+  "water": "#5C829B",
+  "parks": "#EFF1EC",
+  "road_motorway": "#4A5A6A",
+  "road_primary": "#5F7082",
+  "road_secondary": "#7A8B9D",
+  "road_tertiary": "#97A7B8",
+  "road_residential": "#C3CDD7",
+  "road_default": "#97A7B8",
+  "focus_color": "#D84B3A",
+  "focus_edge_color": "#1D262F",
+  "focus_edge_width": 1.5,
+  "focus_size": 400
+}
