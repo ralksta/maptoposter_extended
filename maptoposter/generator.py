@@ -13,7 +13,7 @@ from pyproj import Transformer
 
 from maptoposter.theme import get_font_prop
 from maptoposter.geocoding import get_region_from_address
-from maptoposter.weather import parse_date_and_time, fetch_weather_data, GERMAN_MONTHS, WMO_WEATHER_CODES
+from maptoposter.weather import parse_date_and_time, fetch_weather_data, ENGLISH_MONTHS, WMO_WEATHER_CODES
 from maptoposter.cache import cache_get, cache_set
 
 POSTERS_DIR = "posters"
@@ -180,9 +180,9 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
     if parks is None: steps_to_do += 1
     
     if steps_to_do == 0:
-        print("✓ Alle Kartendaten wurden erfolgreich aus dem lokalen Cache geladen! (1-Sekunden-Boost)")
+        print("✓ All map data successfully loaded from local cache! (1-second boost)")
     else:
-        print(f"Lade {steps_to_do} fehlende Datensätze von der Overpass API...")
+        print(f"Downloading {steps_to_do} missing datasets from Overpass API...")
         with tqdm(total=steps_to_do, desc="Fetching map data", unit="step", bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}') as pbar:
             if G is None:
                 pbar.set_description("Downloading street network")
@@ -203,7 +203,7 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
                     if water is not None and not water.empty:
                         water = water[water.geometry.type.isin(['Polygon', 'MultiPolygon'])]
                 except Exception as e:
-                    print(f"⚠ Fehler beim Gewässer-Download: {e}")
+                    print(f"⚠ Error downloading water features: {e}")
                     water = None
                 cache_set(cache_key_water, water)
                 pbar.update(1)
@@ -216,7 +216,7 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
                     if parks is not None and not parks.empty:
                         parks = parks[parks.geometry.type.isin(['Polygon', 'MultiPolygon'])]
                 except Exception as e:
-                    print(f"⚠ Fehler beim Park-Download: {e}")
+                    print(f"⚠ Error downloading park features: {e}")
                     parks = None
                 cache_set(cache_key_parks, parks)
                 pbar.update(1)
@@ -224,7 +224,7 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
     print("✓ All data loaded successfully!")
     
     # 1.5 UTM Projection to avoid map warp and ensure perfectly circular focus points
-    print("Projiziere Karte auf UTM (metrisches System)...")
+    print("Projecting map to UTM (metric system)...")
     G_proj = ox.project_graph(G)
     G_crs = G_proj.graph['crs']
     
@@ -321,7 +321,7 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
     
     # Layer 2.5: Fokus-Punkt (falls gesetzt)
     if focus_proj is not None:
-        print("Platziere Fokus-Punkt auf der Karte (UTM)...")
+        print("Placing focus point on the map (UTM)...")
         focus_color = theme.get('focus_color', '#E63946')
         focus_size = theme.get('focus_size', 350)
         focus_edge_color = theme.get('focus_edge_color', 'white')
@@ -346,14 +346,14 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
         try:
             parsed_date, parsed_time = parse_date_and_time(date_str, time_str)
             
-            # Format German premium date string (e.g. 17. MAI 2026)
+            # Format English premium date string (e.g. MAY 17, 2026)
             month_idx = parsed_date.month
-            month_name = GERMAN_MONTHS.get(month_idx, parsed_date.strftime("%B").upper())
-            formatted_date = f"{parsed_date.day}. {month_name} {parsed_date.year}"
+            month_name = ENGLISH_MONTHS.get(month_idx, parsed_date.strftime("%B").upper())
+            formatted_date = f"{month_name} {parsed_date.day}, {parsed_date.year}"
             
             if parsed_time:
                 formatted_time = parsed_time.strftime("%H:%M")
-                datetime_str = f"{formatted_date} / {formatted_time} UHR"
+                datetime_str = f"{formatted_date} / {formatted_time}"
             else:
                 datetime_str = formatted_date
             
@@ -363,11 +363,11 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
             if show_weather:
                 try:
                     temp, code = fetch_weather_data(point[0], point[1], parsed_date, parsed_time)
-                    desc = WMO_WEATHER_CODES.get(code, "WETTER")
+                    desc = WMO_WEATHER_CODES.get(code, "WEATHER")
                     weather_str = f"{desc}, {temp:.1f}°C"
                     weather_val_str = weather_str
                 except Exception as we:
-                    print(f"⚠ Warning: Wetterdaten konnten nicht geladen werden: {we}")
+                    print(f"⚠ Warning: Weather data could not be fetched: {we}")
                     
             if weather_str:
                 weather_info_str = f"{datetime_str}  •  {weather_str}"
@@ -375,7 +375,7 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
                 weather_info_str = datetime_str
                 
         except Exception as e:
-            print(f"⚠ Warning: Zeitstempel konnte nicht verarbeitet werden: {e}")
+            print(f"⚠ Warning: Timestamp could not be processed: {e}")
     
     # 4. Typography using Roboto font or dynamic system fonts/files from theme
     loaded_custom_fonts = None
@@ -384,7 +384,7 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
             from maptoposter.font_management import load_fonts as load_custom_fonts_mgr
             loaded_custom_fonts = load_custom_fonts_mgr(font_family)
         except Exception as e:
-            print(f"⚠ Fehler beim Laden der Google-Schriftart '{font_family}': {e}")
+            print(f"⚠ Error loading Google font '{font_family}': {e}")
             
     font_title_val = theme.get('font_title')
     font_body_val = theme.get('font_body')
@@ -521,41 +521,41 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
             try:
                 geolocator = Nominatim(user_agent="city_map_poster_region")
                 time.sleep(0.5)
-                locs = geolocator.geocode(f"{city}, {country}", addressdetails=True, timeout=10, language='de')
+                locs = geolocator.geocode(f"{city}, {country}", addressdetails=True, timeout=10, language='en')
                 if locs:
                     region = get_region_from_address(locs)
             except Exception as e:
-                print(f"⚠ Region konnte nicht geholt werden: {e}")
+                print(f"⚠ Could not retrieve region: {e}")
                 
         if region:
-            ax_info.text(0.0, y_pos, "REGION / PROVINZ", transform=ax_info.transAxes,
+            ax_info.text(0.0, y_pos, "REGION / PROVINCE", transform=ax_info.transAxes,
                          color=theme['text'], alpha=0.6, ha='left', va='top', fontproperties=font_info_label)
             y_pos -= 0.035
             ax_info.text(0.0, y_pos, region.upper(), transform=ax_info.transAxes,
                          color=theme['text'], ha='left', va='top', fontproperties=font_info_val)
             y_pos -= 0.075
             
-        # Stack 2: Zeitstempel / Date
+        # Stack 2: Timestamp / Date
         if datetime_val_str:
-            ax_info.text(0.0, y_pos, "ZEITPUNKT", transform=ax_info.transAxes,
+            ax_info.text(0.0, y_pos, "TIMESTAMP", transform=ax_info.transAxes,
                          color=theme['text'], alpha=0.6, ha='left', va='top', fontproperties=font_info_label)
             y_pos -= 0.035
             ax_info.text(0.0, y_pos, datetime_val_str.upper(), transform=ax_info.transAxes,
                          color=theme['text'], ha='left', va='top', fontproperties=font_info_val)
             y_pos -= 0.075
             
-        # Stack 3: Klima & Wetter
+        # Stack 3: Climate & Weather
         if weather_val_str:
-            ax_info.text(0.0, y_pos, "KLIMA & WETTER", transform=ax_info.transAxes,
+            ax_info.text(0.0, y_pos, "CLIMATE & WEATHER", transform=ax_info.transAxes,
                          color=theme['text'], alpha=0.6, ha='left', va='top', fontproperties=font_info_label)
             y_pos -= 0.035
             ax_info.text(0.0, y_pos, weather_val_str.upper(), transform=ax_info.transAxes,
                          color=theme['text'], ha='left', va='top', fontproperties=font_info_val)
             y_pos -= 0.075
             
-        # Stack 4: Custom Note / Kamera
+        # Stack 4: Camera / Custom Note
         if custom_note:
-            ax_info.text(0.0, y_pos, "KAMERA", transform=ax_info.transAxes,
+            ax_info.text(0.0, y_pos, "CAMERA", transform=ax_info.transAxes,
                          color=theme['text'], alpha=0.6, ha='left', va='top', fontproperties=font_info_label)
             y_pos -= 0.035
             
@@ -564,13 +564,13 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
                          color=theme['text'], ha='left', va='top', fontproperties=font_info_val)
             y_pos -= 0.075
 
-        # Stack 5: Koordinaten / GPS
+        # Stack 5: GPS Coordinates
         lat, lon = point
         coords_val_str = f"{lat:.4f}° N / {lon:.4f}° E" if lat >= 0 else f"{abs(lat):.4f}° S / {lon:.4f}° E"
         if lon < 0:
             coords_val_str = coords_val_str.replace("E", "W")
             
-        ax_info.text(0.0, y_pos, "GPS-KOORDINATEN", transform=ax_info.transAxes,
+        ax_info.text(0.0, y_pos, "GPS COORDINATES", transform=ax_info.transAxes,
                      color=theme['text'], alpha=0.6, ha='left', va='top', fontproperties=font_info_label)
         y_pos -= 0.035
         ax_info.text(0.0, y_pos, coords_val_str, transform=ax_info.transAxes,
@@ -581,9 +581,9 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
         ax_info.text(0.0, 0.01, "© OpenStreetMap contributors", transform=ax_info.transAxes,
                      color=theme['text'], alpha=0.4, ha='left', va='bottom', fontproperties=font_attr)
 
-    # Layer 4: Optionale Landeskarte (Inset-Map)
+    # Layer 4: Optional Inset Map
     if show_inset:
-        print(f"Versuche Landeskarte (Inset) für {country} zu laden...")
+        print(f"Attempting to load inset map for {country}...")
         try:
             # 1. Geometrie des Landes laden
             gdf_country = ox.geocode_to_gdf(country)
@@ -658,9 +658,9 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
                     spine.set_linewidth(0.8 * scale)
                     spine.set_alpha(0.8)
                     
-                print("✓ Landeskarte (Inset) erfolgreich hinzugefügt!")
+                print("✓ Inset map successfully added!")
         except Exception as e:
-            print(f"⚠ Warning: Landeskarte für {country} konnte nicht gerendert werden: {e}")
+            print(f"⚠ Warning: Could not render inset map for {country}: {e}")
 
     # 5. Save
     print(f"Saving to {output_file}...")
@@ -670,7 +670,7 @@ def create_poster(city, country, point, dist, output_file, theme, focus_point=No
     # 6. Apply Paper Texture if requested
     if use_paper_texture:
         if not output_file.lower().endswith('.png'):
-            print("⚠ Washi-Papiertextur wird für Vektorformate (SVG/PDF) übersprungen, um die Vektoreigenschaften sauber zu halten.")
+            print("⚠ Washi paper texture skipped for vector formats (SVG/PDF) to preserve vector properties.")
         else:
             texture_path = os.path.join('assets', 'paper_texture.png')
             if os.path.exists(texture_path):

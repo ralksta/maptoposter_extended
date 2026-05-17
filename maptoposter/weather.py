@@ -1,43 +1,43 @@
 import requests
 from datetime import datetime
 
-# German month names for premium styling
-GERMAN_MONTHS = {
-    1: "JANUAR", 2: "FEBRUAR", 3: "MÄRZ", 4: "APRIL", 
-    5: "MAI", 6: "JUNI", 7: "JULI", 8: "AUGUST", 
-    9: "SEPTEMBER", 10: "OKTOBER", 11: "NOVEMBER", 12: "DEZEMBER"
+# English month names for premium styling
+ENGLISH_MONTHS = {
+    1: "JANUARY", 2: "FEBRUARY", 3: "MARCH", 4: "APRIL", 
+    5: "MAY", 6: "JUNE", 7: "JULY", 8: "AUGUST", 
+    9: "SEPTEMBER", 10: "OCTOBER", 11: "NOVEMBER", 12: "DECEMBER"
 }
 
-# WMO Weather Codes to Emojis and Descriptions
+# WMO Weather Codes to Descriptions (English)
 WMO_WEATHER_CODES = {
-    0: "SONNIG",
-    1: "FAST WOLKENLOS",
-    2: "TEILWEISE BEWÖLKT",
-    3: "BEWÖLKT",
-    45: "NEBLIG",
-    48: "NEBLIG RAGEND",
-    51: "LEICHTER NIESELREGEN",
-    53: "NIESELREGEN",
-    55: "STARKER NIESELREGEN",
-    56: "GEFRIERENDER NIESELREGEN",
-    57: "STARKER GEFRIERENDER NIESELREGEN",
-    61: "LEICHTER REGEN",
-    63: "REGEN",
-    65: "STARKER REGEN",
-    66: "LEICHTER GEFRIERENDER REGEN",
-    67: "STARKER GEFRIERENDER REGEN",
-    71: "LEICHTER SCHNEEFALL",
-    73: "SCHNEEFALL",
-    75: "STARKER SCHNEEFALL",
-    77: "SCHNEEGRISEL",
-    80: "LEICHTER REGENSCHAUER",
-    81: "REGENSCHAUER",
-    82: "STARKER REGENSCHAUER",
-    85: "LEICHTER SCHNEESCHAUER",
-    86: "STARKER SCHNEESCHAUER",
-    95: "GEWITTER",
-    96: "GEWITTER MIT LEICHTEM HAGEL",
-    99: "GEWITTER MIT HAGEL",
+    0: "SUNNY",
+    1: "MOSTLY CLEAR",
+    2: "PARTLY CLOUDY",
+    3: "CLOUDY",
+    45: "FOGGY",
+    48: "DEPOSITING RIME FOG",
+    51: "LIGHT DRIZZLE",
+    53: "DRIZZLE",
+    55: "HEAVY DRIZZLE",
+    56: "FREEZING DRIZZLE",
+    57: "HEAVY FREEZING DRIZZLE",
+    61: "LIGHT RAIN",
+    63: "RAIN",
+    65: "HEAVY RAIN",
+    66: "LIGHT FREEZING RAIN",
+    67: "HEAVY FREEZING RAIN",
+    71: "LIGHT SNOWFALL",
+    73: "SNOWFALL",
+    75: "HEAVY SNOWFALL",
+    77: "SNOW GRAINS",
+    80: "LIGHT RAIN SHOWERS",
+    81: "RAIN SHOWERS",
+    82: "HEAVY RAIN SHOWERS",
+    85: "LIGHT SNOW SHOWERS",
+    86: "HEAVY SNOW SHOWERS",
+    95: "THUNDERSTORM",
+    96: "THUNDERSTORM WITH LIGHT HAIL",
+    99: "THUNDERSTORM WITH HAIL",
 }
 
 def parse_date_and_time(date_str, time_str=None):
@@ -58,7 +58,7 @@ def parse_date_and_time(date_str, time_str=None):
             except ValueError:
                 continue
         if not parsed_date:
-            raise ValueError(f"Ungültiges Datumsformat: '{date_str}'. Erlaubt sind z.B. 17.05.2026 oder 2026-05-17.")
+            raise ValueError(f"Invalid date format: '{date_str}'. Allowed formats are e.g. 17.05.2026 or 2026-05-17.")
 
     if time_str:
         time_str = time_str.strip().lower()
@@ -72,7 +72,7 @@ def parse_date_and_time(date_str, time_str=None):
             except ValueError:
                 continue
         if not parsed_time:
-            raise ValueError(f"Ungültiges Uhrzeitformat: '{time_str}'. Erlaubt sind z.B. 18:30 oder 18.")
+            raise ValueError(f"Invalid time format: '{time_str}'. Allowed formats are e.g. 18:30 or 18.")
 
     return parsed_date, parsed_time
 
@@ -99,7 +99,7 @@ def fetch_weather_data(lat, lon, date_obj, time_obj=None):
         "timezone": "auto"
     }
     
-    print(f"Abfrage Wetterdaten über Open-Meteo ({'Archiv' if date_obj.date() < today else 'Vorhersage'})...")
+    print(f"Fetching weather data from Open-Meteo ({'archive' if date_obj.date() < today else 'forecast'})...")
     
     response = requests.get(api_url, params=params, timeout=10)
     response.raise_for_status()
@@ -107,7 +107,7 @@ def fetch_weather_data(lat, lon, date_obj, time_obj=None):
     
     hourly = data.get("hourly", {})
     if not hourly or "time" not in hourly:
-        raise ValueError("Keine stündlichen Wetterdaten in der API-Antwort vorhanden.")
+        raise ValueError("No hourly weather data present in the API response.")
         
     target_hour = time_obj.hour if time_obj else 12
     times = hourly["time"]
@@ -126,7 +126,7 @@ def fetch_weather_data(lat, lon, date_obj, time_obj=None):
         target_index = target_hour
         
     if target_index == -1 or target_index >= len(hourly["temperature_2m"]):
-        raise ValueError(f"Konnte keinen passenden Datenpunkt für Stunde {target_hour} finden.")
+        raise ValueError(f"Could not find a matching data point for hour {target_hour}.")
         
     temp = hourly["temperature_2m"][target_index]
     code = hourly["weather_code"][target_index]

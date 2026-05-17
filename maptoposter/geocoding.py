@@ -11,7 +11,7 @@ def get_coordinates(city, country):
     cache_key = f"geocode_coords_{city.lower().strip()}_{country.lower().strip()}"
     cached_data = cache_get(cache_key)
     if cached_data is not None:
-        print(f"✓ Geocoding-Cache-Hit für '{city}, {country}'")
+        print(f"✓ Geocoding cache hit for '{city}, {country}'")
         return cached_data
 
     print("Looking up coordinates...")
@@ -21,7 +21,7 @@ def get_coordinates(city, country):
     time.sleep(1)
     
     try:
-        locations = geolocator.geocode(f"{city}, {country}", exactly_one=False, timeout=10, addressdetails=True, language='de')
+        locations = geolocator.geocode(f"{city}, {country}", exactly_one=False, timeout=10, addressdetails=True, language='en')
         if locations:
             cache_set(cache_key, locations)
         return locations
@@ -36,7 +36,7 @@ def search_location(query):
     cache_key = f"geocode_search_{query.lower().strip()}"
     cached_data = cache_get(cache_key)
     if cached_data is not None:
-        print(f"✓ Geocoding-Cache-Hit für Suche '{query}'")
+        print(f"✓ Geocoding cache hit for search '{query}'")
         return cached_data
 
     print(f"Searching for '{query}'...")
@@ -46,7 +46,7 @@ def search_location(query):
     time.sleep(1)
     
     try:
-        locations = geolocator.geocode(query, exactly_one=False, timeout=10, addressdetails=True, language='de')
+        locations = geolocator.geocode(query, exactly_one=False, timeout=10, addressdetails=True, language='en')
         if locations:
             cache_set(cache_key, locations)
         return locations

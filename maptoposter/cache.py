@@ -31,7 +31,7 @@ def cache_get(key: str):
                 return pickle.load(f)
         except Exception as e:
             # If load fails, we gracefully treat it as a cache miss and log/ignore
-            print(f"⚠ Cache-Lesefehler für '{key}': {e}. Wird ignoriert.")
+            print(f"⚠ Cache read error for '{key}': {e}. Ignoring.")
             return None
     return None
 
@@ -48,5 +48,5 @@ def cache_set(key: str, data):
             pickle.dump(data, f)
         return True
     except Exception as e:
-        print(f"⚠ Cache-Schreibfehler für '{key}': {e}.")
+        print(f"⚠ Cache write error for '{key}': {e}.")
         return False

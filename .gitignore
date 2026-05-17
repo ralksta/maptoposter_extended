@@ -14,3 +14,4 @@ themes/leica.json
 # Cache and local files
 fonts/cache/
 scratch/
+scratch_*

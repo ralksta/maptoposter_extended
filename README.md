@@ -118,22 +118,52 @@ python create_map_poster.py --config configs/my_saved_setup.json
 ```
 
 **Example Configuration File (`configs/elbphilharmonie.json`):**
-```json
+```jsonc
 {
-    "query": "Elbphilharmonie Hamburg",
-    "location_choice": "1",
-    "focus_choice": "2",
-    "city": "Elbphilharmonie",
-    "country": "Germany",
-    "theme_choice": "noir",
-    "dist_choice": "1",
-    "inset_choice": "1",
-    "weather_time_choice": "1",
-    "layout_choice": "1",
-    "use_paper_texture": "yes",
-    "confirm_generation": "yes",
-    "save_config_name": "n"
+    // --- LOCATION OPTIONS ---
+    "coord_input_mode": "1",            // Mode: "1" = Location search (Default), "2" = Manual GPS coordinates
+    "query": "Elbphilharmonie Hamburg", // Search query for Nominatim geocoding (only active if coord_input_mode = "1")
+    "location_choice": "1",             // Index of the selected match when multiple results are found (Default: "1")
+    "manual_latitude": "53.5413",       // Latitude for manual GPS input (only active if coord_input_mode = "2")
+    "manual_longitude": "9.9842",       // Longitude for manual GPS input (only active if coord_input_mode = "2")
+    
+    // --- FOCUS POINT / POSITIONING ---
+    "focus_choice": "2",                // Red focal marker: "1" = None/clean map (Default), "2" = Red pin at coordinates
+    
+    // --- TEXT LABELS / TITLES ---
+    "city": "Elbphilharmonie",          // Main title on the poster (Default: resolved city name)
+    "country": "Germany",               // Subtitle / country on the poster (Default: resolved country name)
+    
+    // --- VISUAL MAP OPTIONS ---
+    "theme_choice": "noir",             // Color scheme: Name of the theme (e.g. "noir", "waterkant") or index number
+    "dist_choice": "1",                 // Zoom radius: "1" = 5km (tight), "2" = 10km (Default), "3" = 20km (wide), "4" = Custom manual input
+    "custom_distance": "10000",         // Custom radius in meters (only active if dist_choice = "4")
+    
+    // --- LOCATOR MAP (INSET MAP) ---
+    "inset_choice": "1",                // Inset locator map: "1" = Disabled (Default), "2" = Enabled (small country map with red pin)
+    "inset_position": "1",              // Position of the inset map: "1" = Top-Left (Default), "2" = Top-Right, "3" = Bottom-Left, "4" = Bottom-Right
+    
+    // --- TIMESTAMP & HISTORICAL WEATHER ---
+    "weather_time_choice": "1",         // Timestamp mode: "1" = Disabled (Default), "2" = Show timestamp & fetch weather
+    "date_str": "17.05.2026",           // Date for weather & timestamp (Format: DD.MM.YYYY or YYYY-MM-DD)
+    "time_str": "18:30",                // Optional time (Format: HH:MM, leave empty for midday)
+    "show_weather_choice": "yes",       // Fetch weather details from Open-Meteo: "yes"/"y" = Yes (Default), "no"/"n" = No
+    
+    // --- LAYOUT & FORMATS ---
+    "layout_choice": "1",               // Layout format: "1" = Classic Portrait (Default), "2" = Gallery Info Plaque Landscape (landscape-plaque)
+    "title_choice": "1",                // Draw title directly on the map portion for plaque layout: "1" = Disabled (Default), "2" = Enabled
+    "custom_note": "Maritime Edition",   // Custom text note / camera details for landscape plaque layout (optional)
+    "use_paper_texture": "yes",         // Apply organic Japanese Washi paper texture overlay: "yes"/"y" = Yes, "no"/"n" = No (Default)
+    "format": "1",                      // Output file format: "1" = PNG (Default), "2" = SVG (Vector), "3" = PDF (Print-ready)
+    "font_family": "Montserrat",        // Custom Google Font name (e.g. "Montserrat"), leave empty for theme default
+    "width": "12.0",                    // Custom width in inches (optional, max 20.0, leave empty for default layout aspect ratio)
+    "height": "18.0",                   // Custom height in inches (optional, max 20.0, leave empty for default layout aspect ratio)
+
+    // --- DIALOG AUTOMATION ---
+    "confirm_generation": "yes",        // Skip confirmation prompt and start generation immediately: "yes"/"y" = Yes, "no"/"n" = No
+    "save_config_name": "n"             // Save config file under specified filename: name (e.g. "hamburg") or "n" = No
 }
+```
 ```
 
 ---

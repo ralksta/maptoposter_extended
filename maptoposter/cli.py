@@ -135,15 +135,15 @@ Examples:
     
     # Cap width and height at 20.0 inches
     if args.width is not None and args.width > 20.0:
-        print(f"\033[93m⚠ Warnung: Breite von {args.width} Zoll überschreitet das Limit! Wir deckeln sie auf 20.0 Zoll, um Abstürze zu vermeiden.\033[0m")
+        print(f"\033[93m⚠ Warning: Width of {args.width} inches exceeds the limit! Capping it to 20.0 inches to prevent crashes.\033[0m")
         args.width = 20.0
     if args.height is not None and args.height > 20.0:
-        print(f"\033[93m⚠ Warnung: Höhe von {args.height} Zoll überschreitet das Limit! Wir deckeln sie auf 20.0 Zoll, um Abstürze zu vermeiden.\033[0m")
+        print(f"\033[93m⚠ Warning: Height of {args.height} inches exceeds the limit! Capping it to 20.0 inches to prevent crashes.\033[0m")
         args.height = 20.0
         
     # Validate manual coordinates have both lat and long
     if (args.latitude is not None and args.longitude is None) or (args.latitude is None and args.longitude is not None):
-        print("Error: Für manuelle Koordinaten müssen sowohl --latitude (-lat) als auch --longitude (-long) angegeben werden!")
+        print("Error: Both --latitude (-lat) and --longitude (-long) are required for manual coordinates!")
         sys.exit(1)
     
     # If no arguments provided or --wizard flag is used, run the wizard
@@ -159,7 +159,7 @@ Examples:
     # Validate required arguments
     if not args.city or not args.country:
         print("Error: --city and --country are required for CLI mode.\n")
-        print("💡 Tipp: Starte das Skript einfach ohne Argumente oder mit -w, um den interaktiven Wizard zu starten!\n")
+        print("💡 Tip: Start the script without arguments or with -w to launch the interactive wizard!\n")
         print_examples()
         sys.exit(1)
     
@@ -183,14 +183,14 @@ Examples:
         try:
             lat_str, lon_str = args.focus.split(',')
             focus_coords = (float(lat_str.strip()), float(lon_str.strip()))
-            print(f"✓ Fokus-Punkt Koordinaten geladen: {focus_coords}")
+            print(f"✓ Focus point coordinates loaded: {focus_coords}")
         except Exception as e:
-            print(f"Error: Ungültiges Format für --focus. Muss 'latitude,longitude' sein (z.B. '53.5511,9.9937').")
+            print(f"Error: Invalid format for --focus. Must be 'latitude,longitude' (e.g., '53.5511,9.9937').")
             sys.exit(1)
             
     # Validate --center-on-focus has --focus
     if args.center_on_focus and not focus_coords:
-        print("Error: --center-on-focus / -cf benötigt einen Fokuspunkt via --focus / -f!")
+        print("Error: --center-on-focus / -cf requires a focus point via --focus / -f!")
         sys.exit(1)
             
     # Get coordinates and generate poster
@@ -198,30 +198,30 @@ Examples:
         region = None
         if args.latitude is not None and args.longitude is not None:
             coords = (args.latitude, args.longitude)
-            print(f"✓ Manuelle GPS-Koordinaten verwendet: {coords} (Nominatim übersprungen)")
+            print(f"✓ Using manual GPS coordinates: {coords} (Nominatim bypassed)")
         else:
             locations = get_coordinates(args.city, args.country)
             if not locations:
-                print(f"Error: Konnte keine Koordinaten für '{args.city}, {args.country}' finden! Bitte überprüfe die Schreibweise.")
+                print(f"Error: Could not find coordinates for '{args.city}, {args.country}'! Please check the spelling.")
                 sys.exit(1)
                 
             if len(locations) == 1:
                 coords = (locations[0].latitude, locations[0].longitude)
-                print(f"✓ Ort eindeutig gefunden: {locations[0].address}")
+                print(f"✓ Location uniquely found: {locations[0].address}")
                 region = get_region_from_address(locations[0])
             else:
                 # Ambiguity!
                 if args.select_first:
                     coords = (locations[0].latitude, locations[0].longitude)
-                    print(f"\033[93m⚠ Warnung: Mehrere Treffer für '{args.city}, {args.country}' gefunden!\033[0m")
-                    print(f"\033[93m  Wir verwenden den ersten Treffer: {locations[0].address}\033[0m")
+                    print(f"\033[93m⚠ Warning: Multiple matches found for '{args.city}, {args.country}'!\033[0m")
+                    print(f"\033[93m  Using the first match: {locations[0].address}\033[0m")
                     region = get_region_from_address(locations[0])
                 else:
-                    print(f"\n✗ Error: Der Ort '{args.city}, {args.country}' ist nicht eindeutig! Es wurden {len(locations)} Übereinstimmungen gefunden:")
+                    print(f"\n✗ Error: The location '{args.city}, {args.country}' is ambiguous! {len(locations)} matches were found:")
                     top_locations = locations[:5]
                     for idx, loc in enumerate(top_locations, 1):
                         print(f"  [{idx}] {loc.address}")
-                    print("\n💡 Tipp: Nutze den interaktiven Wizard (ohne Parameter oder mit -w) oder übergib '-y' / '--select-first', um den ersten Treffer zu erzwingen.")
+                    print("\n💡 Tip: Use the interactive wizard (without arguments or with -w) or pass '-y' / '--select-first' to force the first match.")
                     sys.exit(1)
                 
         # Resolve no-card-title value
@@ -236,7 +236,7 @@ Examples:
         # Determine center coords
         if args.center_on_focus:
             center_coords = focus_coords
-            print(f"✓ Kartenausschnitt wird auf den Fokus-Punkt zentriert: {center_coords}")
+            print(f"✓ Map section centered on the focus point: {center_coords}")
         else:
             center_coords = coords
             
